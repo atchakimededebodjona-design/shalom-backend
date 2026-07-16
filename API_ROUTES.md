@@ -1,7 +1,7 @@
 # Routes API — SHALOM Backend
 
 Ce document recense l'intégralité des routes REST implémentées et actives à ce jour dans l'application.
-*Toutes les routes (à l'exception de la route de santé et des routes d'authentification) requièrent un token JWT via le header `Authorization: Bearer <token>`.*
+*Toutes les routes (à l'exception de la route de santé, des routes d'authentification et de la soumission publique d'un formulaire CAMAJ) requièrent un token JWT via le header `Authorization: Bearer <token>`.*
 
 ---
 
@@ -29,6 +29,8 @@ Ce document recense l'intégralité des routes REST implémentées et actives à
 |---|---|---|
 | `GET` | `/api/v1/profiles/me` | Récupérer le profil de l'utilisateur connecté |
 | `PATCH` | `/api/v1/profiles/me` | Mettre à jour le profil de l'utilisateur connecté |
+| `GET` | `/api/v1/profiles/search` | Rechercher des utilisateurs par nom d'affichage (`?q=`, `?page=`, `?limit=`) |
+| `GET` | `/api/v1/profiles/:userId` | Récupérer le profil public d'un autre utilisateur (sans champs sensibles) |
 
 ---
 
@@ -136,3 +138,25 @@ Le type est déterminé à partir des **octets du fichier**, jamais du nom ni du
 L'extension stockée découle du type détecté. Types acceptés : PNG, JPEG, GIF,
 WEBP, MP4, MOV, WEBM. Tout le reste est refusé — SVG compris, car il peut
 exécuter du script. Les fichiers sont servis sur `/uploads/<nom>`.
+
+---
+
+## 🎓 12. CAMAJ — Demandes des formulaires publics (`/api/v1/camaj`)
+
+Table unifiée des demandes issues des formulaires publics du CAMAJ (mentorat,
+programmes, projets FAJ, dons, relation d'aide). Champs communs en colonnes,
+reste du formulaire conservé tel quel en JSONB (`payload`).
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `POST` | `/api/v1/camaj/submissions` | Soumettre une demande depuis un formulaire CAMAJ **(public, sans token)** |
+| `GET` | `/api/v1/camaj/submissions` | Lister les demandes avec pagination et filtres `?type=` / `?status=` *(Admin)* |
+| `GET` | `/api/v1/camaj/submissions/stats` | Compteurs par statut et par type pour le tableau de bord *(Admin)* |
+| `PATCH` | `/api/v1/camaj/submissions/:id` | Changer le statut d'une demande *(Admin)* |
+
+La création attend un corps `{ type, data }` où `type` ∈ `mentor`, `programme`,
+`mentorat`, `faj`, `don`, `relation_aide`, et `data` est l'état complet du
+formulaire (un `nom` — ou `prenom` — et un moyen de contact `whatsapp` ou `email`
+sont requis). Le statut d'une demande ∈ `nouveau`, `traite`, `archive`.
+La soumission publique est limitée à **20 requêtes / 15 min par IP**.
+L'accès administrateur est déterminé par la variable d'environnement `ADMIN_EMAILS`.

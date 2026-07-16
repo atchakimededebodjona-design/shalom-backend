@@ -56,6 +56,73 @@ const findProfileByUserId = async (userId) => {
 };
 
 /**
+ * Récupère le profil PUBLIC d'un utilisateur (sans champs sensibles).
+ * Utilisé pour consulter le profil d'un autre membre.
+ * N'expose ni email, ni rôle, ni solde de crédits.
+ * @param {string} userId - UUID de l'utilisateur ciblé
+ * @returns {Promise<object|null>}
+ */
+const findPublicProfileByUserId = async (userId) => {
+  const result = await query(
+    `SELECT
+       p.user_id,
+       p.display_name,
+       p.avatar_url,
+       p.cover_url,
+       p.bio,
+       p.country,
+       p.city,
+       p.church_name,
+       p.denomination,
+       p.website,
+       p.plan,
+       p.is_ambassador,
+       p.is_verified,
+       p.created_at
+     FROM profiles p
+     JOIN users u ON u.id = p.user_id
+     WHERE p.user_id = $1 AND u.deleted_at IS NULL`,
+    [userId]
+  );
+  return result.rows[0] || null;
+};
+
+/**
+ * Rechercher des profils par nom d'affichage (display_name ILIKE).
+ * Exclut le demandeur et les comptes supprimés. Ne renvoie que des champs publics.
+ * @param {string} searchTerm - Terme recherché
+ * @param {string} requesterId - UUID du demandeur (exclu des résultats)
+ * @param {number} limit
+ * @param {number} offset
+ * @returns {Promise<{ profiles: Array, total: number }>}
+ */
+const searchProfiles = async (searchTerm, requesterId, limit, offset) => {
+  const like = `%${searchTerm}%`;
+
+  const countResult = await query(
+    `SELECT count(*)
+     FROM profiles p
+     JOIN users u ON u.id = p.user_id
+     WHERE u.deleted_at IS NULL AND p.user_id != $1 AND p.display_name ILIKE $2`,
+    [requesterId, like]
+  );
+  const total = parseInt(countResult.rows[0].count, 10);
+
+  const result = await query(
+    `SELECT p.user_id, p.display_name, p.avatar_url, p.bio, p.city, p.country,
+            p.is_verified, p.is_ambassador
+     FROM profiles p
+     JOIN users u ON u.id = p.user_id
+     WHERE u.deleted_at IS NULL AND p.user_id != $1 AND p.display_name ILIKE $2
+     ORDER BY p.display_name ASC
+     LIMIT $3 OFFSET $4`,
+    [requesterId, like, limit, offset]
+  );
+
+  return { profiles: result.rows, total };
+};
+
+/**
  * Met à jour les champs autorisés du profil
  * @param {string} userId - UUID de l'utilisateur
  * @param {object} fields - Champs à mettre à jour
@@ -111,5 +178,7 @@ const updateProfile = async (userId, fields) => {
 module.exports = {
   createProfile,
   findProfileByUserId,
+  findPublicProfileByUserId,
+  searchProfiles,
   updateProfile,
 };

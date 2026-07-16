@@ -4,7 +4,7 @@
 const { Router } = require('express');
 const profilesController = require('./profiles.controller');
 const { authenticate } = require('../auth/auth.middleware');
-const { updateProfileSchema } = require('./profiles.validation');
+const { updateProfileSchema, userIdParamSchema } = require('./profiles.validation');
 
 const router = Router();
 
@@ -58,5 +58,58 @@ router.get('/me', authenticate, profilesController.getMe);
  *         description: Non authentifié
  */
 router.patch('/me', authenticate, updateProfileSchema, profilesController.updateMe);
+
+/**
+ * @swagger
+ * /api/v1/profiles/search:
+ *   get:
+ *     summary: Rechercher des utilisateurs par nom d'affichage
+ *     tags: [Profiles]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Liste des profils correspondants
+ */
+// NB : déclarée AVANT /:userId pour que le segment littéral /search ait la priorité
+router.get('/search', authenticate, profilesController.search);
+
+/**
+ * @swagger
+ * /api/v1/profiles/{userId}:
+ *   get:
+ *     summary: Récupérer le profil public d'un autre utilisateur
+ *     tags: [Profiles]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Profil public récupéré avec succès
+ *       404:
+ *         description: Profil introuvable
+ *       401:
+ *         description: Non authentifié
+ */
+// NB : déclarée APRÈS /me pour que la route littérale /me ait la priorité
+router.get('/:userId', authenticate, userIdParamSchema, profilesController.getById);
 
 module.exports = router;

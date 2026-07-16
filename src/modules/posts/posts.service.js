@@ -27,24 +27,33 @@ const createPost = async (authorId, postData) => {
  * @param {number} offset - Décalage pour la pagination
  * @returns {Promise<{ posts: Array, total: number }>}
  */
-const getFeed = async (limit, offset) => {
+const getFeed = async (userId, limit, offset) => {
   // Compter le total de posts publiés
   const countResult = await query(
     `SELECT count(*) FROM posts WHERE status = 'publie'`
   );
   const total = parseInt(countResult.rows[0].count, 10);
 
-  // Récupérer les posts avec les infos de l'auteur
+  // Récupérer les posts + infos auteur + état pour l'utilisateur courant
+  // (is_liked = a-t-il liké ce post ; is_following = suit-il l'auteur)
   const postsResult = await query(
-    `SELECT 
+    `SELECT
       p.*,
-      row_to_json(pr.*) as author_profile
+      row_to_json(pr.*) as author_profile,
+      EXISTS (
+        SELECT 1 FROM likes l
+        WHERE l.likeable_type = 'post' AND l.likeable_id = p.id AND l.user_id = $1
+      ) AS is_liked,
+      EXISTS (
+        SELECT 1 FROM follows f
+        WHERE f.follower_id = $1 AND f.followed_id = p.author_id
+      ) AS is_following
      FROM posts p
      JOIN profiles pr ON p.author_id = pr.user_id
      WHERE p.status = 'publie'
      ORDER BY p.created_at DESC
-     LIMIT $1 OFFSET $2`,
-    [limit, offset]
+     LIMIT $2 OFFSET $3`,
+    [userId, limit, offset]
   );
 
   return { posts: postsResult.rows, total };
@@ -55,15 +64,23 @@ const getFeed = async (limit, offset) => {
  * @param {string} postId - ID du post
  * @returns {Promise<object|null>} Post ou null
  */
-const getPostById = async (postId) => {
+const getPostById = async (postId, userId) => {
   const result = await query(
-    `SELECT 
+    `SELECT
       p.*,
-      row_to_json(pr.*) as author_profile
+      row_to_json(pr.*) as author_profile,
+      EXISTS (
+        SELECT 1 FROM likes l
+        WHERE l.likeable_type = 'post' AND l.likeable_id = p.id AND l.user_id = $2
+      ) AS is_liked,
+      EXISTS (
+        SELECT 1 FROM follows f
+        WHERE f.follower_id = $2 AND f.followed_id = p.author_id
+      ) AS is_following
      FROM posts p
      JOIN profiles pr ON p.author_id = pr.user_id
      WHERE p.id = $1 AND p.status = 'publie'`,
-    [postId]
+    [postId, userId]
   );
   return result.rows[0] || null;
 };

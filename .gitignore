@@ -17,3 +17,10 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# Fichiers téléversés par les utilisateurs (et leur zone de transit)
+uploads/
+uploads-tmp/
+
+# Images générées / assets qui traînent
+ChatGPT Image*.png

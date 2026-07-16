@@ -25,7 +25,7 @@ const createPostSchema = [
   body('media_url')
     .optional()
     .trim()
-    .isURL()
+    .isURL({ require_tld: false }) // accepte aussi les URLs localhost (fichiers téléversés en dev)
     .withMessage('Le format de l\'URL du média est invalide'),
 
   body('group_id')
@@ -53,7 +53,7 @@ const updatePostSchema = [
   body('media_url')
     .optional()
     .trim()
-    .isURL()
+    .isURL({ require_tld: false }) // accepte aussi les URLs localhost (fichiers téléversés en dev)
     .withMessage('Le format de l\'URL du média est invalide'),
 ];
 

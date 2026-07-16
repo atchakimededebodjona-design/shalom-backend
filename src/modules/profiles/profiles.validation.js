@@ -1,7 +1,16 @@
 // src/modules/profiles/profiles.validation.js
 // Schémas de validation express-validator pour le module profiles
 
-const { body } = require('express-validator');
+const { body, param } = require('express-validator');
+
+/**
+ * Validation du paramètre userId (consultation d'un profil public)
+ */
+const userIdParamSchema = [
+  param('userId')
+    .isUUID()
+    .withMessage("L'identifiant utilisateur doit être un UUID valide"),
+];
 
 /**
  * Validation de la mise à jour du profil
@@ -23,13 +32,13 @@ const updateProfileSchema = [
   body('avatar_url')
     .optional()
     .trim()
-    .isURL()
+    .isURL({ require_tld: false }) // accepte aussi les URLs localhost (fichiers téléversés en dev)
     .withMessage('L\'URL de l\'avatar doit être une URL valide'),
 
   body('cover_url')
     .optional()
     .trim()
-    .isURL()
+    .isURL({ require_tld: false }) // accepte aussi les URLs localhost (fichiers téléversés en dev)
     .withMessage('L\'URL de couverture doit être une URL valide'),
 
   body('country')
@@ -65,4 +74,5 @@ const updateProfileSchema = [
 
 module.exports = {
   updateProfileSchema,
+  userIdParamSchema,
 };

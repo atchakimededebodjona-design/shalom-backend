@@ -15,7 +15,7 @@ const getFeed = async (req, res, next) => {
     // Pagination depuis les utilitaires
     const { page, limit, offset } = getPagination(req.query);
 
-    const { posts, total } = await postsService.getFeed(limit, offset);
+    const { posts, total } = await postsService.getFeed(req.user.id, limit, offset);
     const pagination = formatPagination(page, limit, total);
 
     return res.status(200).json({
@@ -39,7 +39,7 @@ const getPostById = async (req, res, next) => {
     if (hasValidationErrors(req, res)) return;
 
     const { id } = req.params;
-    const post = await postsService.getPostById(id);
+    const post = await postsService.getPostById(id, req.user.id);
 
     if (!post) {
       throw new AppError('Post introuvable ou supprimé', 404, 'POST_NOT_FOUND');

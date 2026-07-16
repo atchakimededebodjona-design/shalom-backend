@@ -1,4 +1,5 @@
 const { pool } = require('../config/db');
+const { isAdminEmail } = require('../utils/admin');
 
 /**
  * Middleware pour vérifier si l'utilisateur connecté est un administrateur global.
@@ -19,10 +20,8 @@ const requireAdmin = async (req, res, next) => {
     }
 
     const email = result.rows[0].email;
-    const adminEmailsStr = process.env.ADMIN_EMAILS || '';
-    const adminEmails = adminEmailsStr.split(',').map(e => e.trim().toLowerCase());
 
-    if (!adminEmails.includes(email.toLowerCase())) {
+    if (!isAdminEmail(email)) {
       return res.status(403).json({
         success: false,
         error: "Action réservée aux administrateurs",

@@ -59,6 +59,30 @@ router.get('/', messagesController.getUserConversations);
 
 /**
  * @swagger
+ * /api/v1/conversations/{id}:
+ *   get:
+ *     summary: Détail d'une conversation (participants)
+ *     tags: [Messages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Détail de la conversation
+ *       403:
+ *         description: Non participant
+ *       404:
+ *         description: Conversation introuvable
+ */
+router.get('/:id', conversationIdSchema, messagesController.getConversation);
+
+/**
+ * @swagger
  * /api/v1/conversations/{id}/messages:
  *   get:
  *     summary: Obtenir les messages d'une conversation

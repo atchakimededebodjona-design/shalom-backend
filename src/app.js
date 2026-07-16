@@ -2,6 +2,7 @@
 // Point d'entrée Express — configuration de l'application
 
 const express = require('express');
+const path = require('path');
 const cors = require('cors');
 const helmet = require('helmet');
 const env = require('./config/env');
@@ -18,6 +19,8 @@ const followsRoutes = require('./modules/follows/follows.routes');
 const messagesRoutes = require('./modules/messages/messages.routes');
 const reportsRoutes = require('./modules/reports/reports.routes');
 const notificationsRoutes = require('./modules/notifications/notifications.routes');
+const uploadsRoutes = require('./modules/uploads/uploads.routes');
+const camajRoutes = require('./modules/camaj/camaj.routes');
 
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./config/swagger');
@@ -60,7 +63,24 @@ app.get('/api/v1/health', (_req, res) => {
 // --- Documentation Swagger ---
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, { customSiteTitle: "SHALOM API Docs" }));
 
+// --- Fichiers téléversés (servis statiquement) ---
+// CORP cross-origin pour permettre l'affichage des médias depuis le front (autre origine)
+app.use(
+  '/uploads',
+  (_req, res, next) => {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    // Défense en profondeur : ces fichiers viennent de l'extérieur. La route
+    // d'upload n'accepte déjà que des images/vidéos authentifiées par leurs
+    // octets, mais si un document exécutable parvenait ici, cette CSP
+    // l'empêcherait de charger ou d'exécuter quoi que ce soit.
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    next();
+  },
+  express.static(path.join(__dirname, '..', 'uploads'))
+);
+
 // --- Routes de l'API ---
+app.use('/api/v1/uploads', uploadsRoutes);
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/profiles', profilesRoutes);
 app.use('/api/v1/posts', postsRoutes);
@@ -71,6 +91,7 @@ app.use('/api/v1/follows', followsRoutes);
 app.use('/api/v1/conversations', messagesRoutes);
 app.use('/api/v1/reports', reportsRoutes);
 app.use('/api/v1/notifications', notificationsRoutes);
+app.use('/api/v1/camaj', camajRoutes);
 
 // --- Gestion des erreurs ---
 

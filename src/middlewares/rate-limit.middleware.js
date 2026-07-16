@@ -37,4 +37,21 @@ const globalLimiter = rateLimit({
   },
 });
 
-module.exports = { authLimiter, globalLimiter };
+/**
+ * Rate limiter pour les soumissions de formulaires CAMAJ (endpoint public)
+ * Limite : 20 requêtes par fenêtre de 15 minutes par IP
+ * Freine le spam tout en laissant un visiteur remplir plusieurs formulaires.
+ */
+const camajLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'Trop de demandes envoyées. Veuillez réessayer dans quelques minutes.',
+    code: 'TOO_MANY_REQUESTS',
+  },
+});
+
+module.exports = { authLimiter, globalLimiter, camajLimiter };

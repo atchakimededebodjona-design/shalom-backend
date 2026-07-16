@@ -129,6 +129,36 @@ const getUserConversations = async (userId, limit, offset) => {
 };
 
 /**
+ * Récupérer le détail d'une conversation (avec les autres participants)
+ * Vérifie que le demandeur y participe.
+ */
+const getConversation = async (userId, conversationId) => {
+  await _verifyParticipation(conversationId, userId);
+
+  const result = await query(
+    `SELECT c.id, c.is_group, c.created_at,
+            COALESCE(
+              json_agg(
+                json_build_object(
+                  'user_id', pr.user_id,
+                  'display_name', pr.display_name,
+                  'avatar_url', pr.avatar_url
+                )
+              ) FILTER (WHERE pr.user_id <> $2),
+              '[]'
+            ) AS other_participants
+     FROM conversations c
+     JOIN conversation_participants cp ON cp.conversation_id = c.id
+     JOIN profiles pr ON pr.user_id = cp.user_id
+     WHERE c.id = $1
+     GROUP BY c.id`,
+    [conversationId, userId]
+  );
+
+  return result.rows[0] || null;
+};
+
+/**
  * Lister les messages d'une conversation
  */
 const getConversationMessages = async (userId, conversationId, limit, offset) => {
@@ -192,6 +222,7 @@ const markAsRead = async (userId, conversationId) => {
 module.exports = {
   createOrGetConversation,
   getUserConversations,
+  getConversation,
   getConversationMessages,
   sendMessage,
   markAsRead

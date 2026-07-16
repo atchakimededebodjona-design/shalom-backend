@@ -38,6 +38,26 @@ const getUserConversations = async (req, res, next) => {
   }
 };
 
+const getConversation = async (req, res, next) => {
+  try {
+    if (hasValidationErrors(req, res)) return;
+    const userId = req.user.id;
+    const { id } = req.params;
+
+    const conversation = await messagesService.getConversation(userId, id);
+    if (!conversation) {
+      return res.status(404).json({ success: false, error: 'Conversation introuvable', code: 'CONVERSATION_NOT_FOUND' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: { conversation }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const getConversationMessages = async (req, res, next) => {
   try {
     if (hasValidationErrors(req, res)) return;
@@ -97,6 +117,7 @@ const markAsRead = async (req, res, next) => {
 module.exports = {
   createConversation,
   getUserConversations,
+  getConversation,
   getConversationMessages,
   sendMessage,
   markAsRead

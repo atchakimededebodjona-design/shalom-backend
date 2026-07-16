@@ -122,3 +122,17 @@ Ce document recense l'intégralité des routes REST implémentées et actives à
 | `POST` | `/api/v1/reports/` | Signaler un contenu inapproprié (post ou commentaire) |
 | `GET` | `/api/v1/reports/` | Lister les signalements *(Réservé aux Administrateurs)* |
 | `PATCH` | `/api/v1/reports/:id` | Traiter et mettre à jour le statut d'un signalement *(Admin)* |
+
+---
+
+## 📎 11. Téléversements (`/api/v1/uploads`)
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `POST` | `/api/v1/uploads/` | Téléverser une image ou une vidéo (multipart, champ `file`, max 50 Mo) |
+
+Le type est déterminé à partir des **octets du fichier**, jamais du nom ni du
+`Content-Type` annoncés : ceux-ci viennent du client et ne prouvent rien.
+L'extension stockée découle du type détecté. Types acceptés : PNG, JPEG, GIF,
+WEBP, MP4, MOV, WEBM. Tout le reste est refusé — SVG compris, car il peut
+exécuter du script. Les fichiers sont servis sur `/uploads/<nom>`.

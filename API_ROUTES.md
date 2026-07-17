@@ -160,3 +160,50 @@ formulaire (un `nom` — ou `prenom` — et un moyen de contact `whatsapp` ou `e
 sont requis). Le statut d'une demande ∈ `nouveau`, `traite`, `archive`.
 La soumission publique est limitée à **20 requêtes / 15 min par IP**.
 L'accès administrateur est déterminé par la variable d'environnement `ADMIN_EMAILS`.
+
+---
+
+## 💰 13. Gestion Financière (`/api/v1/finance`)
+
+Outil de finances personnelles. Toutes les routes sont **authentifiées** et
+cloisonnées à l'utilisateur connecté (chacun ne voit que ses propres données).
+
+### Catégories
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/finance/categories` | Lister ses catégories (filtre optionnel `?type=income\|expense`) |
+| `POST` | `/api/v1/finance/categories` | Créer une catégorie (`{ name, type, icon? }`) |
+| `PATCH` | `/api/v1/finance/categories/:id` | Mettre à jour une catégorie (`{ name?, icon? }`) |
+| `DELETE`| `/api/v1/finance/categories/:id` | Supprimer une catégorie (soft delete) |
+
+### Transactions
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/finance/transactions` | Lister ses transactions — filtres `?type=` `?category_id=` `?from=` `?to=`, paginé |
+| `POST` | `/api/v1/finance/transactions` | Enregistrer une transaction (`{ type, amount, transaction_date, category_id?, note?, is_recurring?, recurrence_frequency? }`) |
+| `GET` | `/api/v1/finance/transactions/:id` | Détail d'une transaction |
+| `PATCH` | `/api/v1/finance/transactions/:id` | Mettre à jour une transaction |
+| `DELETE`| `/api/v1/finance/transactions/:id` | Supprimer une transaction (soft delete) |
+
+### Objectifs d'épargne
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/finance/goals` | Lister ses objectifs (filtre optionnel `?status=`) |
+| `POST` | `/api/v1/finance/goals` | Créer un objectif (`{ title, target_amount, current_amount?, target_date? }`) |
+| `GET` | `/api/v1/finance/goals/:id` | Détail d'un objectif |
+| `PATCH` | `/api/v1/finance/goals/:id` | Mettre à jour un objectif (`{ title?, target_amount?, current_amount?, target_date?, status? }`) |
+| `DELETE`| `/api/v1/finance/goals/:id` | Supprimer un objectif (soft delete) |
+
+### Analyse
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/finance/summary` | Résumé d'un mois (`?year_month=YYYY-MM`, mois courant par défaut) : revenus, dépenses, taux d'épargne, répartition par catégorie. Mis en cache dans `finance_monthly_summary`. |
+| `GET` | `/api/v1/finance/overview` | Aperçu global : total revenus, total dépenses, solde, nombre d'objectifs actifs |
+
+Types de transaction : `income`, `expense`. Fréquences de récurrence : `daily`,
+`weekly`, `monthly`, `yearly`. Statuts d'objectif : `active`, `achieved`,
+`abandoned`. Les montants sont des `NUMERIC(12,2)` strictement positifs.

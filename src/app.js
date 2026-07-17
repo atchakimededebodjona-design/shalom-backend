@@ -21,6 +21,7 @@ const reportsRoutes = require('./modules/reports/reports.routes');
 const notificationsRoutes = require('./modules/notifications/notifications.routes');
 const uploadsRoutes = require('./modules/uploads/uploads.routes');
 const camajRoutes = require('./modules/camaj/camaj.routes');
+const financeRoutes = require('./modules/finance/finance.routes');
 
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./config/swagger');
@@ -92,6 +93,7 @@ app.use('/api/v1/conversations', messagesRoutes);
 app.use('/api/v1/reports', reportsRoutes);
 app.use('/api/v1/notifications', notificationsRoutes);
 app.use('/api/v1/camaj', camajRoutes);
+app.use('/api/v1/finance', financeRoutes);
 
 // --- Gestion des erreurs ---
 

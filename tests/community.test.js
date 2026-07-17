@@ -97,6 +97,29 @@ describe('Module Community', () => {
     });
   });
 
+  describe('Mes groupes (GET /groups/mine)', () => {
+    it("renvoie les groupes de l'utilisateur avec son rôle", async () => {
+      const res = await request(app).get('/api/v1/groups/mine').set(asMember());
+      expect(res.statusCode).toBe(200);
+      const g = res.body.data.groups.find((x) => x.id === gPublic);
+      expect(g).toBeDefined();
+      expect(g.my_role).toBe('membre');
+      expect(g.my_status).toBe('actif');
+    });
+
+    it("expose le rôle admin au créateur du groupe", async () => {
+      const res = await request(app).get('/api/v1/groups/mine').set(asAdmin());
+      const g = res.body.data.groups.find((x) => x.id === gPublic);
+      expect(g.my_role).toBe('admin');
+    });
+
+    it("ne renvoie rien à qui n'est membre d'aucun groupe", async () => {
+      const res = await request(app).get('/api/v1/groups/mine').set(asOut());
+      expect(res.statusCode).toBe(200);
+      expect(res.body.data.groups.length).toBe(0);
+    });
+  });
+
   describe('Événements communautaires', () => {
     it('crée un événement global avec capacité', async () => {
       const res = await request(app).post('/api/v1/community/events').set(asAdmin())

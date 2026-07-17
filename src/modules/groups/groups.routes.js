@@ -100,6 +100,21 @@ router.get('/', groupsController.getGroups);
 // NB : déclarée AVANT /:id pour que le segment littéral /directory ait la priorité
 router.get('/directory', directorySchema, groupsController.getDirectory);
 
+/**
+ * @swagger
+ * /api/v1/groups/mine:
+ *   get:
+ *     summary: Groupes dont l'utilisateur est membre actif (avec son rôle)
+ *     tags: [Groups]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Mes groupes
+ */
+// NB : littérale, donc déclarée avant /:id
+router.get('/mine', groupsController.getMyGroups);
+
 router.get('/:id', groupIdSchema, groupsController.getGroupById);
 
 /**

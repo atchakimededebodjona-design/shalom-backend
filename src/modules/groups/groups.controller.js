@@ -241,6 +241,19 @@ const getDirectory = async (req, res, next) => {
   }
 };
 
+/**
+ * GET /api/v1/groups/mine
+ * Groupes dont l'utilisateur est membre actif, avec son rôle.
+ */
+const getMyGroups = async (req, res, next) => {
+  try {
+    const groups = await groupsService.getMyGroups(req.user.id);
+    return res.status(200).json({ success: true, data: { groups } });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createGroup,
   getGroups,
@@ -252,5 +265,6 @@ module.exports = {
   removeMember,
   updateMemberRole,
   updateMemberStatus,
-  getDirectory
+  getDirectory,
+  getMyGroups
 };

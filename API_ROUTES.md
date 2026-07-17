@@ -92,6 +92,12 @@ Ce document recense l'intégralité des routes REST implémentées et actives à
 | `PATCH` | `/api/v1/groups/:id/members/:userId/role` | Mettre à jour le rôle d'un membre (ex: passer admin) |
 | `PATCH` | `/api/v1/groups/:id/members/:userId/status`| Mettre à jour le statut d'un membre (ex: approuver adhésion) |
 | `GET` | `/api/v1/groups/directory` | **Annuaire** des groupes / cellules (filtres `?category=` `?search=`, paginé) |
+| `GET` | `/api/v1/groups/mine` | Ses groupes (membre actif), **avec son rôle** (`my_role`, `my_status`) |
+
+`GET /groups/` ne liste que les groupes **publics** et ne dit rien de l'adhésion :
+`GET /groups/mine` complète le module pour les écrans qui doivent proposer
+« un de mes groupes » (créer un événement, partager une demande de prière,
+publier une annonce — cette dernière filtrant sur `my_role` ∈ admin/modérateur).
 
 L'annuaire (ajouté par la migration 007) s'appuie sur les colonnes
 `group_category`, `meeting_schedule`, `location_info` et `is_directory_visible`

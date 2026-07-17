@@ -364,6 +364,26 @@ const getDirectory = async ({ category, search, limit, offset }) => {
   return { groups: rows.rows, total: countResult.rows[0].total };
 };
 
+/**
+ * Groupes dont l'utilisateur est membre actif, avec son rôle.
+ * Sert notamment aux formulaires communautaires (créer un événement, partager
+ * une demande de prière ou publier une annonce dans un de ses groupes) :
+ * `getGroups` ne renvoie que les groupes publics et ne dit rien de l'adhésion.
+ */
+const getMyGroups = async (userId) => {
+  const result = await query(
+    `SELECT g.id, g.name, g.description, g.cover_url, g.visibility, g.members_count,
+            g.group_category, g.meeting_schedule, g.location_info,
+            m.role AS my_role, m.status AS my_status
+     FROM group_members m
+     JOIN groups g ON g.id = m.group_id
+     WHERE m.user_id = $1 AND m.status = 'actif' AND g.deleted_at IS NULL
+     ORDER BY g.name ASC`,
+    [userId]
+  );
+  return result.rows;
+};
+
 module.exports = {
   createGroup,
   getGroups,
@@ -375,5 +395,6 @@ module.exports = {
   updateMemberRole,
   updateMemberStatus,
   getMembers,
-  getDirectory
+  getDirectory,
+  getMyGroups
 };

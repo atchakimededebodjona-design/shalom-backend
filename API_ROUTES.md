@@ -287,3 +287,81 @@ Types d'entrée : `note`, `gratitude`.
 > `worship_songs.created_by` sont en `NO ACTION` (pas de `ON DELETE CASCADE`).
 > Supprimer un compte ayant créé un plan ou un chant échoue tant que ces lignes
 > existent — les nettoyer d'abord (cf. `tests/spiritual.test.js`).
+
+---
+
+## 🧰 15. Outils pratiques du quotidien (`/api/v1/tools`)
+
+Dîme/offrandes, événements personnels, listes de tâches et convertisseur
+d'unités. Toutes les routes sont **authentifiées** ; les données sont
+cloisonnées à leur propriétaire (le référentiel d'unités est commun à tous).
+
+### Calculatrice de dîme / offrandes
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/tools/tithe` | Historique (filtres `?is_paid=` `?from=` `?to=`, paginé) |
+| `POST` | `/api/v1/tools/tithe` | Calculer et enregistrer (`{ income_amount, tithe_percentage?, offering_amount?, calculation_date? }`) |
+| `GET` | `/api/v1/tools/tithe/:id` | Détail d'un calcul |
+| `PATCH` | `/api/v1/tools/tithe/:id` | Marquer payé / ajuster l'offrande (`{ is_paid?, offering_amount? }`) |
+| `DELETE`| `/api/v1/tools/tithe/:id` | Supprimer (définitif — la table n'a pas de `deleted_at`) |
+
+Le `tithe_amount` est **toujours calculé côté serveur** (`ROUND(revenu × % / 100, 2)`),
+jamais repris du client. Pourcentage par défaut : **10 %**. Marquer payé horodate
+`paid_at` ; repasser à non payé l'efface.
+
+### Événements personnels
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/tools/personal-events` | Lister (filtres `?status=` `?event_type=` `?from=` `?to=`, paginé) |
+| `POST` | `/api/v1/tools/personal-events` | Planifier (`{ title, start_date, event_type?, description?, end_date?, reminder_enabled?, reminder_before_minutes? }`) |
+| `GET` | `/api/v1/tools/personal-events/:id` | Détail |
+| `PATCH` | `/api/v1/tools/personal-events/:id` | Mettre à jour (dont `status`) |
+| `DELETE`| `/api/v1/tools/personal-events/:id` | Supprimer (soft delete) |
+
+Types : `jeune`, `retraite`, `priere`, `autre`. Statuts : `planned`, `completed`, `cancelled`.
+
+### Listes de tâches
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/tools/task-lists` | Ses listes, avec `tasks_count` et `completed_count` |
+| `POST` | `/api/v1/tools/task-lists` | Créer une liste (`{ title? }`, défaut « Ma liste ») |
+| `GET` | `/api/v1/tools/task-lists/:id` | Détail **avec ses tâches triées par position** |
+| `PATCH` | `/api/v1/tools/task-lists/:id` | Renommer |
+| `DELETE`| `/api/v1/tools/task-lists/:id` | Supprimer (soft delete) |
+| `PATCH` | `/api/v1/tools/task-lists/:id/reorder` | **Réordonner** (`{ ordered_ids: [uuid, …] }`) → positions `1..n` |
+
+Le réordonnancement est **transactionnel** et rejette (404) tout `ordered_ids`
+contenant une tâche qui n'appartient pas à la liste.
+
+### Tâches
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/tools/tasks` | Lister ses tâches (filtres `?list_id=` `?is_completed=` `?due_before=`, paginé) |
+| `POST` | `/api/v1/tools/tasks` | Ajouter (`{ list_id, content, due_date?, position? }`) — position auto en fin de liste |
+| `GET` | `/api/v1/tools/tasks/:id` | Détail |
+| `PATCH` | `/api/v1/tools/tasks/:id` | Mettre à jour (`{ content?, is_completed?, due_date?, position? }`) |
+| `DELETE`| `/api/v1/tools/tasks/:id` | Supprimer (soft delete) |
+
+Cocher une tâche horodate `completed_at` ; la décocher l'efface.
+
+### Convertisseur d'unités
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/tools/units` | Référentiel groupé par catégorie (4 catégories, 18 unités) |
+| `POST` | `/api/v1/tools/units/convert` | Convertir (`{ from_unit_id, to_unit_id, value }`) |
+| `GET` | `/api/v1/tools/units/history` | Ses 20 dernières paires converties (avec `used_count`) |
+
+La conversion passe par l'unité de base de la catégorie :
+`résultat = valeur × facteur_source ÷ facteur_cible`. Deux unités de
+**catégories différentes** renvoient **400 `CATEGORY_MISMATCH`**.
+Unités de base : `m` (Longueur), `kg` (Poids), `L` (Volume), `XOF` (Devise).
+
+> 💱 **Devises** : seul l'euro est seedé face au franc CFA, car cette parité est
+> **fixe** (1 EUR = 655,957 XOF). Les devises à taux flottant (USD, GBP…) ne
+> sont volontairement pas incluses : un taux figé en base induirait l'utilisateur
+> en erreur. Les ajouter suppose de brancher une source de taux à jour.

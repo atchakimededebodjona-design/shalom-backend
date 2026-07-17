@@ -207,3 +207,83 @@ cloisonnées à l'utilisateur connecté (chacun ne voit que ses propres données
 Types de transaction : `income`, `expense`. Fréquences de récurrence : `daily`,
 `weekly`, `monthly`, `yearly`. Statuts d'objectif : `active`, `achieved`,
 `abandoned`. Les montants sont des `NUMERIC(12,2)` strictement positifs.
+
+---
+
+## 🙏 14. Outils Spirituels (`/api/v1/spiritual`)
+
+Lecture biblique, carnet de prière, versets du jour, journal spirituel et
+louange. Toutes les routes sont **authentifiées** ; les données personnelles
+(prières, journal, progression, playlists) sont cloisonnées à leur propriétaire.
+
+### Plans de lecture biblique
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/spiritual/plans` | Catalogue : plans publics + les siens, avec sa progression |
+| `POST` | `/api/v1/spiritual/plans` | Créer un plan (`{ title, total_days, description?, duration_type?, is_public? }`) |
+| `GET` | `/api/v1/spiritual/plans/:id` | Détail d'un plan **avec ses jours** |
+| `POST` | `/api/v1/spiritual/plans/:id/days` | Définir le contenu d'un jour *(créateur du plan)* |
+| `POST` | `/api/v1/spiritual/plans/:id/start` | Démarrer le plan (idempotent) |
+| `POST` | `/api/v1/spiritual/plans/:id/complete-day` | Valider un jour → met à jour progression et **streak** |
+| `GET` | `/api/v1/spiritual/plans/:id/logs` | Jours validés (calendrier) |
+| `PATCH` | `/api/v1/spiritual/plans/:id/progress` | Changer le statut (`active`/`completed`/`abandoned`) |
+| `GET` | `/api/v1/spiritual/progress` | Progression sur tous ses plans |
+
+**Streak** : +1 si la validation précédente date de la veille, inchangé si elle
+date du jour même, remis à 1 après une interruption. Valider le dernier jour
+passe le plan à `completed`. Rejouer un jour déjà validé est sans effet
+(`already_completed: true`).
+
+### Carnet de prière
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/spiritual/prayers` | Lister ses sujets (filtres `?status=` `?category=`, paginé) |
+| `POST` | `/api/v1/spiritual/prayers` | Ajouter (`{ title, description?, category?, reminder_frequency? }`) |
+| `GET` | `/api/v1/spiritual/prayers/:id` | Détail |
+| `PATCH` | `/api/v1/spiritual/prayers/:id` | Mettre à jour — passer à `answered` **horodate** `answered_at`, en sortir l'efface |
+| `DELETE`| `/api/v1/spiritual/prayers/:id` | Supprimer (soft delete) |
+
+Statuts : `pending`, `answered`, `ongoing`. Rappels : `daily`, `weekly`, `none`.
+
+### Versets / citations
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/spiritual/verses/today` | Verset du jour (celui daté d'aujourd'hui, sinon rotation déterministe) — enregistre la consultation |
+| `GET` | `/api/v1/spiritual/verses/favorites` | Ses versets favoris |
+| `POST` | `/api/v1/spiritual/verses` | Ajouter au catalogue *(Admin)* |
+| `PATCH` | `/api/v1/spiritual/verses/:id/favorite` | Marquer/retirer des favoris (`{ is_favorite }`) |
+
+### Journal spirituel
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/spiritual/journal` | Lister ses entrées (filtres `?entry_type=` `?from=` `?to=`, paginé) |
+| `POST` | `/api/v1/spiritual/journal` | Ajouter (`{ content, entry_type?, mood?, entry_date? }`) |
+| `GET` | `/api/v1/spiritual/journal/:id` | Détail |
+| `PATCH` | `/api/v1/spiritual/journal/:id` | Mettre à jour |
+| `DELETE`| `/api/v1/spiritual/journal/:id` | Supprimer (soft delete) |
+
+Types d'entrée : `note`, `gratitude`.
+
+### Louange
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/spiritual/songs` | Chants publics + les siens (recherche `?q=`, `?category=`, paginé) |
+| `POST` | `/api/v1/spiritual/songs` | Ajouter un chant |
+| `GET` | `/api/v1/spiritual/songs/:id` | Détail d'un chant |
+| `GET` | `/api/v1/spiritual/playlists` | Ses playlists (avec `songs_count`) |
+| `POST` | `/api/v1/spiritual/playlists` | Créer une playlist |
+| `GET` | `/api/v1/spiritual/playlists/:id` | Détail **avec ses chants ordonnés** |
+| `PATCH` | `/api/v1/spiritual/playlists/:id` | Mettre à jour |
+| `DELETE`| `/api/v1/spiritual/playlists/:id` | Supprimer (soft delete) |
+| `POST` | `/api/v1/spiritual/playlists/:id/songs` | Ajouter un chant (`position` auto si non fournie) |
+| `DELETE`| `/api/v1/spiritual/playlists/:id/songs/:songId` | Retirer un chant |
+
+> ⚠️ **Note de maintenance** : `bible_reading_plans.created_by` et
+> `worship_songs.created_by` sont en `NO ACTION` (pas de `ON DELETE CASCADE`).
+> Supprimer un compte ayant créé un plan ou un chant échoue tant que ces lignes
+> existent — les nettoyer d'abord (cf. `tests/spiritual.test.js`).

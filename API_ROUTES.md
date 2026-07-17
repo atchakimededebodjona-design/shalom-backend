@@ -452,3 +452,56 @@ aux **administrateurs** (`ADMIN_EMAILS`) ; une annonce **de groupe** exige d'en
 > `follow`, `mention`, `groupe`, `systeme`), le type **`groupe`** est réutilisé
 > pour tout le communautaire. Ajouter des types dédiés supposerait une migration
 > `ALTER TYPE`.
+
+---
+
+## 👛 17. Portefeuille (`/api/v1/wallet`)
+
+Portefeuille unique par utilisateur (devise **FCFA / XOF**). Gère à la fois le
+suivi personnel (revenus/dépenses manuels catégorisés) et les transactions
+réelles de la plateforme (rechargements CinetPay/FedaPay, abonnements CAMAJ+,
+achats de crédits, factures Reçu+, commissions Ambassadeur). Toutes les routes
+sont **authentifiées** et cloisonnées à l'utilisateur connecté, **sauf** le
+webhook provider (public, vérifié par signature HMAC).
+
+Le solde est modifié sous **verrou row-level** (`SELECT ... FOR UPDATE`) dans une
+transaction ; aucune suppression physique de mouvement (soft delete + annulation
+inverse traçable).
+
+### Solde & mouvements
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/wallet` | Résumé : solde, devise, statut + historique paginé (`?page=` `?limit=`) |
+| `GET` | `/api/v1/wallet/transactions` | Lister les mouvements — filtres `?type=credit\|debit` `?source=` `?category_id=` `?from=` `?to=`, paginé |
+| `POST` | `/api/v1/wallet/income` | Revenu manuel → **crédite** (`{ amount, category_id?, description?, reference_type?, reference_id? }`) |
+| `POST` | `/api/v1/wallet/expense` | Dépense manuelle → **débite** ; `400 INSUFFICIENT_BALANCE` si solde insuffisant |
+| `POST` | `/api/v1/wallet/topup` | Initier un rechargement réel (`{ amount, provider }`) → renvoie `payment_url` *(provider en **stub**)* |
+| `POST` | `/api/v1/wallet/transactions/:id/reverse` | Annuler une transaction (`{ reason? }`) → mouvement inverse, l'originale passe en `reversed` |
+
+### Webhook provider (public)
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `POST` | `/api/v1/wallet/webhook/:provider` | Callback provider (`cinetpay`\|`fedapay`). **Pas de JWT**, signature **HMAC**, **idempotent** (UNIQUE `provider`+`provider_tx_id`). Répond **toujours 200** (erreurs journalisées côté serveur) |
+
+### Catégories
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/wallet/categories` | Lister les catégories système **+** personnelles (filtre `?type=income\|expense`) |
+| `POST` | `/api/v1/wallet/categories` | Créer une catégorie personnalisée (`{ name, type, icon?, color? }`) |
+| `PATCH` | `/api/v1/wallet/categories/:id` | Mettre à jour une catégorie personnalisée (catégories système non modifiables) |
+| `DELETE`| `/api/v1/wallet/categories/:id` | Supprimer une catégorie personnalisée (soft delete) |
+
+Types de mouvement : `credit`, `debit`. Sources : `manual`, `topup`,
+`withdrawal`, `subscription`, `credit_purchase`, `invoice`, `commission`,
+`refund`, `reversal`, `adjustment`. Statuts de mouvement : `pending`,
+`completed`, `failed`, `reversed`, `cancelled`. Montants `NUMERIC(14,2)`
+strictement positifs.
+
+> ⚠️ **À compléter** : l'intégration réelle des providers est laissée en **stubs**
+> commentés dans `wallet.service.js` (`verifyWebhookSignature`,
+> `initiateProviderPayment`) et `wallet.controller.js` (`normalizeProviderPayload`).
+> La vérification HMAC exige de capter le **corps brut** de la requête webhook
+> (ex. `express.json({ verify })`).

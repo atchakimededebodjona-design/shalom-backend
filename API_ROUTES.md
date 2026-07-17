@@ -91,6 +91,16 @@ Ce document recense l'intégralité des routes REST implémentées et actives à
 | `DELETE`| `/api/v1/groups/:id/members/:userId` | Retirer un membre ou quitter le groupe soi-même |
 | `PATCH` | `/api/v1/groups/:id/members/:userId/role` | Mettre à jour le rôle d'un membre (ex: passer admin) |
 | `PATCH` | `/api/v1/groups/:id/members/:userId/status`| Mettre à jour le statut d'un membre (ex: approuver adhésion) |
+| `GET` | `/api/v1/groups/directory` | **Annuaire** des groupes / cellules (filtres `?category=` `?search=`, paginé) |
+
+L'annuaire (ajouté par la migration 007) s'appuie sur les colonnes
+`group_category`, `meeting_schedule`, `location_info` et `is_directory_visible`
+de `groups` — modifiables via `PATCH /api/v1/groups/:id` (admin du groupe).
+Catégories : `cellule_priere`, `etude_biblique`, `jeunesse`, `autre`.
+
+> 🔒 `is_directory_visible` vaut `true` par défaut. L'annuaire **exclut malgré
+> tout les groupes `prive`** : ce défaut ne doit pas contourner le modèle de
+> visibilité déjà en place.
 
 ---
 
@@ -365,3 +375,74 @@ Unités de base : `m` (Longueur), `kg` (Poids), `L` (Volume), `XOF` (Devise).
 > **fixe** (1 EUR = 655,957 XOF). Les devises à taux flottant (USD, GBP…) ne
 > sont volontairement pas incluses : un taux figé en base induirait l'utilisateur
 > en erreur. Les ajouter suppose de brancher une source de taux à jour.
+
+---
+
+## 🤝 16. Outils communautaires (`/api/v1/community`)
+
+Événements, demandes de prière partagées et annonces. Toutes les routes sont
+**authentifiées**. L'**annuaire des groupes** vit dans le module `groups`
+(cf. `GET /api/v1/groups/directory`, section 7) pour ne pas dupliquer sa logique.
+
+**Portée de visibilité** : un utilisateur voit le contenu **global** (sans
+groupe) et celui des **groupes dont il est membre actif** ; les demandes de
+prière `public` sont visibles de tous.
+
+### Événements
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/community/events` | Lister (filtres `?event_type=` `?status=` `?group_id=` `?from=` `?to=`, paginé) |
+| `POST` | `/api/v1/community/events` | Créer (`{ title, start_date, event_type?, description?, end_date?, location_info?, cover_image_url?, group_id?, max_participants?, registration_required? }`) |
+| `GET` | `/api/v1/community/events/:id` | Détail (+ `registrations_count`, `is_registered`) |
+| `PATCH` | `/api/v1/community/events/:id` | Mettre à jour *(organisateur)* |
+| `DELETE`| `/api/v1/community/events/:id` | Supprimer *(organisateur, soft delete)* |
+| `POST` | `/api/v1/community/events/:id/register` | S'inscrire — **409 `EVENT_FULL`** si la capacité est atteinte |
+| `DELETE`| `/api/v1/community/events/:id/register` | Annuler son inscription (libère une place) |
+| `GET` | `/api/v1/community/events/:id/registrations` | Liste des inscrits *(organisateur uniquement)* |
+
+Types : `retraite`, `formation`, `conference`, `autre`. Statuts : `upcoming`,
+`ongoing`, `completed`, `cancelled`. Créer un événement de groupe exige d'en être
+membre et **notifie les membres**. Le contrôle de capacité se fait **dans une
+transaction avec verrou** sur l'événement (pas de dépassement en cas
+d'inscriptions simultanées).
+
+### Demandes de prière partagées
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/community/prayers` | Lister (filtres `?visibility=` `?status=` `?group_id=`, paginé) |
+| `POST` | `/api/v1/community/prayers` | Partager (`{ title, description?, visibility?, group_id?, is_anonymous? }`) |
+| `GET` | `/api/v1/community/prayers/:id` | Détail |
+| `PATCH` | `/api/v1/community/prayers/:id` | Mettre à jour *(auteur)* — `status: 'answered'` + `answered_note` |
+| `DELETE`| `/api/v1/community/prayers/:id` | Supprimer *(auteur, soft delete)* |
+| `POST` | `/api/v1/community/prayers/:id/support` | **« Je prie pour toi »** — idempotent, notifie l'auteur |
+| `DELETE`| `/api/v1/community/prayers/:id/support` | Retirer son soutien |
+
+Visibilités : `public`, `group` (exige `group_id` + d'en être membre).
+Statuts : `active`, `answered`, `closed`. Chaque demande expose
+`supports_count`, `is_supported` et `is_mine`.
+
+> 🔒 **Anonymat** : quand `is_anonymous`, l'auteur (`user_id`, `author_name`,
+> `author_avatar`) est masqué **à la lecture** pour tout le monde ; seul
+> `is_mine` permet à l'auteur de retrouver sa demande.
+
+### Annonces
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/community/announcements` | Lister (filtre `?group_id=`, paginé) — **épinglées d'abord, puis priorité décroissante** ; les annonces expirées sont exclues |
+| `POST` | `/api/v1/community/announcements` | Publier (`{ title, content, group_id?, is_pinned?, priority?, expires_at? }`) |
+| `PATCH` | `/api/v1/community/announcements/:id` | Mettre à jour *(auteur)* |
+| `DELETE`| `/api/v1/community/announcements/:id` | Supprimer *(auteur, soft delete)* |
+
+**Droits de publication** : une annonce **globale** (sans `group_id`) est réservée
+aux **administrateurs** (`ADMIN_EMAILS`) ; une annonce **de groupe** exige d'en
+être **admin ou modérateur**.
+
+> 🔔 **Notifications** : ce module ne redéfinit aucune logique de notification —
+> il appelle `notifications.service.createNotification()`. L'enum
+> `notification_type` étant partagé et sans valeur dédiée (`like`, `comment`,
+> `follow`, `mention`, `groupe`, `systeme`), le type **`groupe`** est réutilisé
+> pour tout le communautaire. Ajouter des types dédiés supposerait une migration
+> `ALTER TYPE`.

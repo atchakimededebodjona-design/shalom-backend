@@ -215,6 +215,32 @@ const updateMemberStatus = async (req, res, next) => {
   }
 };
 
+/**
+ * GET /api/v1/groups/directory
+ * Annuaire des groupes / cellules de prière, filtrable par catégorie.
+ */
+const getDirectory = async (req, res, next) => {
+  try {
+    if (hasValidationErrors(req, res)) return;
+    const { page, limit, offset } = getPagination(req.query);
+
+    const { groups, total } = await groupsService.getDirectory({
+      category: req.query.category || null,
+      search: req.query.search || null,
+      limit,
+      offset
+    });
+    const pagination = formatPagination(page, limit, total);
+
+    return res.status(200).json({
+      success: true,
+      data: { groups, pagination }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createGroup,
   getGroups,
@@ -225,5 +251,6 @@ module.exports = {
   getMembers,
   removeMember,
   updateMemberRole,
-  updateMemberStatus
+  updateMemberStatus,
+  getDirectory
 };

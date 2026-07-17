@@ -85,7 +85,11 @@ const getGroupById = async (groupId) => {
  * Vérifie si l'utilisateur est admin
  */
 const updateGroup = async (groupId, userId, updateData) => {
-  const { name, description, cover_url, visibility } = updateData;
+  const {
+    name, description, cover_url, visibility,
+    // Champs d'annuaire (ajoutés par 007_community_tools_module)
+    group_category, meeting_schedule, location_info, is_directory_visible
+  } = updateData;
 
   const adminCheck = await query(
     `SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2 AND role = 'admin' AND status = 'actif'`,
@@ -101,10 +105,16 @@ const updateGroup = async (groupId, userId, updateData) => {
      SET name = COALESCE($1, name),
          description = COALESCE($2, description),
          cover_url = COALESCE($3, cover_url),
-         visibility = COALESCE($4, visibility)
-     WHERE id = $5 AND deleted_at IS NULL
+         visibility = COALESCE($4, visibility),
+         group_category = COALESCE($5, group_category),
+         meeting_schedule = COALESCE($6, meeting_schedule),
+         location_info = COALESCE($7, location_info),
+         is_directory_visible = COALESCE($8, is_directory_visible)
+     WHERE id = $9 AND deleted_at IS NULL
      RETURNING *`,
-    [name, description, cover_url, visibility, groupId]
+    [name, description, cover_url, visibility,
+      group_category ?? null, meeting_schedule ?? null, location_info ?? null,
+      is_directory_visible ?? null, groupId]
   );
 
   return result.rows[0];
@@ -316,6 +326,44 @@ const getMembers = async (groupId, limit, offset) => {
   return { members: membersResult.rows, total };
 };
 
+/**
+ * Annuaire des groupes / cellules de prière : groupes souhaitant y figurer,
+ * filtrables par catégorie et par recherche texte.
+ *
+ * NB sécurité : `is_directory_visible` vaut `true` par défaut. On exclut donc
+ * explicitement les groupes `prive`, sinon ce défaut contournerait le modèle de
+ * visibilité déjà en place et exposerait des groupes privés dans l'annuaire.
+ *
+ * @param {{ category?: string|null, search?: string|null, limit: number, offset: number }} options
+ * @returns {Promise<{ groups: Array, total: number }>}
+ */
+const getDirectory = async ({ category, search, limit, offset }) => {
+  const filters = [];
+  let where = "deleted_at IS NULL AND is_directory_visible = true AND visibility <> 'prive'";
+  if (category) {
+    filters.push(category);
+    where += ` AND group_category = $${filters.length}`;
+  }
+  if (search) {
+    filters.push(`%${search}%`);
+    where += ` AND (name ILIKE $${filters.length} OR description ILIKE $${filters.length})`;
+  }
+
+  const countResult = await query(`SELECT count(*)::int AS total FROM groups WHERE ${where}`, filters);
+
+  const rows = await query(
+    `SELECT id, name, description, cover_url, visibility, members_count,
+            group_category, meeting_schedule, location_info, created_at
+     FROM groups
+     WHERE ${where}
+     ORDER BY members_count DESC, name ASC
+     LIMIT $${filters.length + 1} OFFSET $${filters.length + 2}`,
+    [...filters, limit, offset]
+  );
+
+  return { groups: rows.rows, total: countResult.rows[0].total };
+};
+
 module.exports = {
   createGroup,
   getGroups,
@@ -326,5 +374,6 @@ module.exports = {
   removeMember,
   updateMemberRole,
   updateMemberStatus,
-  getMembers
+  getMembers,
+  getDirectory
 };

@@ -2,13 +2,14 @@
 const { Router } = require('express');
 const groupsController = require('./groups.controller');
 const { authenticate } = require('../auth/auth.middleware');
-const { 
-  createGroupSchema, 
-  updateGroupSchema, 
-  groupIdSchema, 
+const {
+  createGroupSchema,
+  updateGroupSchema,
+  groupIdSchema,
   groupMemberIdSchema,
   updateRoleSchema,
-  updateStatusSchema
+  updateStatusSchema,
+  directorySchema
 } = require('./groups.validator');
 
 const router = Router();
@@ -75,6 +76,30 @@ router.get('/', groupsController.getGroups);
  *       200:
  *         description: Détails du groupe
  */
+/**
+ * @swagger
+ * /api/v1/groups/directory:
+ *   get:
+ *     summary: Annuaire des groupes / cellules de prière (filtrable par catégorie)
+ *     tags: [Groups]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: category
+ *         schema:
+ *           type: string
+ *           enum: [cellule_priere, etude_biblique, jeunesse, autre]
+ *       - in: query
+ *         name: search
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Groupes visibles dans l'annuaire (les groupes privés en sont exclus)
+ */
+// NB : déclarée AVANT /:id pour que le segment littéral /directory ait la priorité
+router.get('/directory', directorySchema, groupsController.getDirectory);
+
 router.get('/:id', groupIdSchema, groupsController.getGroupById);
 
 /**

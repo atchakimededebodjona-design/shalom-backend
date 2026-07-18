@@ -19,8 +19,10 @@ Thumbs.db
 .idea/
 
 # Fichiers téléversés par les utilisateurs (et leur zone de transit)
-uploads/
-uploads-tmp/
+# Ancrés à la racine : sans le "/" initial, ce motif masquait aussi
+# src/modules/uploads/ (le code du module), pas seulement le stockage.
+/uploads/
+/uploads-tmp/
 
 # Images générées / assets qui traînent
 ChatGPT Image*.png

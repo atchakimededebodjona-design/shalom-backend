@@ -26,6 +26,7 @@ const spiritualRoutes = require('./modules/spiritual/spiritual.routes');
 const toolsRoutes = require('./modules/tools/tools.routes');
 const communityRoutes = require('./modules/community/community.routes');
 const walletRoutes = require('./modules/wallet/wallet.routes');
+const billingRoutes = require('./modules/billing/billing.routes');
 
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./config/swagger');
@@ -102,6 +103,7 @@ app.use('/api/v1/spiritual', spiritualRoutes);
 app.use('/api/v1/tools', toolsRoutes);
 app.use('/api/v1/community', communityRoutes);
 app.use('/api/v1/wallet', walletRoutes);
+app.use('/api/v1/billing', billingRoutes);
 
 // --- Gestion des erreurs ---
 

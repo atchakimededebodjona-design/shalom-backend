@@ -505,3 +505,79 @@ strictement positifs.
 > `initiateProviderPayment`) et `wallet.controller.js` (`normalizeProviderPayload`).
 > La vérification HMAC exige de capter le **corps brut** de la requête webhook
 > (ex. `express.json({ verify })`).
+
+---
+
+## 🧾 18. Facturation — Reçu+ (`/api/v1/billing`)
+
+Outil SaaS ouvert à **tout membre SHALOM connecté** : déclarer son entreprise,
+gérer ses propres clients (simples contacts, pas forcément des comptes
+SHALOM) et leur émettre des factures. Toutes les routes sont authentifiées.
+
+### Entreprise
+
+Une seule entreprise par compte. Toutes les routes clients/factures/paiements
+exigent d'en avoir créé une (sinon **404 `BUSINESS_NOT_FOUND`**).
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `POST` | `/api/v1/billing/businesses` | Créer son entreprise (`{ name, logo_url?, address?, phone?, tax_id?, currency?, invoice_prefix? }`) — **409 `BUSINESS_ALREADY_EXISTS`** si déjà créée |
+| `GET` | `/api/v1/billing/businesses/me` | Récupérer son entreprise |
+| `PATCH` | `/api/v1/billing/businesses/me` | Mettre à jour son entreprise |
+
+### Clients
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `POST` | `/api/v1/billing/clients` | Créer un client (`{ name, phone?, email?, address? }`) |
+| `GET` | `/api/v1/billing/clients` | Lister ses clients, paginé |
+| `PATCH` | `/api/v1/billing/clients/:id` | Mettre à jour un client |
+| `DELETE`| `/api/v1/billing/clients/:id` | Supprimer un client (soft delete) |
+
+### Factures
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `POST` | `/api/v1/billing/invoices` | Créer une facture (`{ client_id, items: [{description, quantity, unit_price}], tax_rate?, issue_date?, due_date?, notes? }`) — numérotée automatiquement (`<invoice_prefix>-<année>-<0001>`) |
+| `GET` | `/api/v1/billing/invoices` | Lister ses factures — filtre `?status=`, paginé |
+| `GET` | `/api/v1/billing/invoices/:id` | Détail d'une facture avec ses lignes |
+| `PATCH` | `/api/v1/billing/invoices/:id` | Mettre à jour (items, statut, échéance, notes...) — recalcule les totaux si `items` fourni |
+| `DELETE`| `/api/v1/billing/invoices/:id` | Supprimer une facture (soft delete) |
+
+Statuts : `draft`, `partial`, `paid`, `overdue` — calculé automatiquement à
+partir de `amount_paid` / `total` / `due_date` (sauf si forcé explicitement
+via `PATCH`). Montants en **entiers FCFA**, jamais de décimales.
+
+### Paiements
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `POST` | `/api/v1/billing/invoices/:id/payments` | Enregistrer un paiement (`{ amount, payment_method?, reference_id?, payment_date? }`) — **400 `PAYMENT_EXCEEDS_DUE`** si le montant dépasse le solde restant dû |
+| `GET` | `/api/v1/billing/invoices/:id/payments` | Lister les paiements d'une facture |
+| `DELETE`| `/api/v1/billing/payments/:paymentId` | Annuler un paiement (soft delete) — recalcule `amount_paid`/`status` de la facture |
+
+> 👛 **Intégration Portefeuille (wallet)** : chaque paiement enregistré
+> **crédite automatiquement le portefeuille SHALOM** du propriétaire de
+> l'entreprise via `walletService.creditWallet()` — `source: 'invoice'`,
+> `reference_type: 'recu_invoice'`, `reference_id: <invoice_id>` (cf. section
+> 17). Le mouvement créé est tracé dans `payments.wallet_transaction_id`.
+> Annuler un paiement appelle symétriquement `walletService.reverseTransaction()`.
+> Le crédit/l'annulation wallet est une étape **séparée** de la transaction
+> DB du paiement lui-même (le paiement reste acté même si le crédit wallet
+> échoue — l'échec est journalisé côté serveur).
+
+### Impression & partage WhatsApp
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/billing/invoices/:id/print` | Page HTML imprimable de la facture (bouton « Imprimer » intégré, `Ctrl+P` → Enregistrer en PDF) |
+| `GET` | `/api/v1/billing/invoices/:id/whatsapp-link` | `{ whatsapp_url, public_url }` — lien `wa.me` pré-rempli vers le client, et lien public de la facture |
+| `GET` | `/api/v1/billing/public/invoices/:token` | **Public, sans authentification** — même page imprimable, accessible via le `share_token` de la facture (celui envoyé dans le lien WhatsApp) |
+
+Chaque facture a un `share_token` (UUID aléatoire, généré à la création,
+colonne `invoices.share_token`) qui sert de secret d'accès à la route
+publique — pas de compte SHALOM requis côté client pour consulter/imprimer
+sa facture. `GET .../whatsapp-link` échoue en **400 `CLIENT_PHONE_MISSING`**
+si le client n'a pas de numéro de téléphone renseigné. Aucune API WhatsApp
+Business n'est utilisée : le lien `wa.me` ouvre WhatsApp (web ou mobile) avec
+le message déjà rédigé, prêt à envoyer manuellement.

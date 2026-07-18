@@ -555,6 +555,8 @@ const renderInvoiceHtml = ({ invoice, items, business, client }) => {
 <style>
   body { font-family: Arial, sans-serif; color: #1a1a1a; max-width: 720px; margin: 40px auto; padding: 0 16px; }
   .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #1a1a1a; padding-bottom: 16px; margin-bottom: 24px; }
+  .business { display: flex; align-items: flex-start; gap: 12px; }
+  .business img { width: 56px; height: 56px; object-fit: contain; border-radius: 6px; }
   .business h1 { margin: 0 0 4px; font-size: 20px; }
   .business p { margin: 2px 0; font-size: 13px; color: #444; }
   .invoice-meta { text-align: right; }
@@ -577,10 +579,13 @@ const renderInvoiceHtml = ({ invoice, items, business, client }) => {
   <button class="no-print" onclick="window.print()" style="float:right; padding:8px 14px;">🖨️ Imprimer</button>
   <div class="header">
     <div class="business">
-      <h1>${business.name}</h1>
-      ${business.address ? `<p>${business.address}</p>` : ''}
-      ${business.phone ? `<p>Tél : ${business.phone}</p>` : ''}
-      ${business.tax_id ? `<p>NIF/RCCM : ${business.tax_id}</p>` : ''}
+      ${business.logo_url ? `<img src="${business.logo_url}" alt="Logo" />` : ''}
+      <div>
+        <h1>${business.name}</h1>
+        ${business.address ? `<p>${business.address}</p>` : ''}
+        ${business.phone ? `<p>Tél : ${business.phone}</p>` : ''}
+        ${business.tax_id ? `<p>NIF/RCCM : ${business.tax_id}</p>` : ''}
+      </div>
     </div>
     <div class="invoice-meta">
       <h2>Facture ${invoice.invoice_number}</h2>

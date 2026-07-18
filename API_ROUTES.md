@@ -581,3 +581,48 @@ sa facture. `GET .../whatsapp-link` échoue en **400 `CLIENT_PHONE_MISSING`**
 si le client n'a pas de numéro de téléphone renseigné. Aucune API WhatsApp
 Business n'est utilisée : le lien `wa.me` ouvre WhatsApp (web ou mobile) avec
 le message déjà rédigé, prêt à envoyer manuellement.
+
+---
+
+## 🕊️ 18. Programme Ambassadeur (`/api/v1/ambassador`)
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/ambassador/dashboard` | Tableau de bord ambassadeur (stats, solde, progression certification) |
+| `POST` | `/api/v1/ambassador/join` | Rejoindre le programme ambassadeur (génère le code `SHLM-XXXXXX`) |
+| `GET` | `/api/v1/ambassador/profile` | Récupérer son profil ambassadeur |
+| `PATCH` | `/api/v1/ambassador/profile` | Mettre à jour sa biographie |
+| `GET` | `/api/v1/ambassador/referral-link` | Obtenir les liens de parrainage (url direct + bouton WhatsApp prérempli) |
+| `GET` | `/api/v1/ambassador/referrals` | Lister ses filleuls (`?status=registered\|subscribed\|qualified`) |
+| `GET` | `/api/v1/ambassador/commissions/summary` | Résumé des commissions par statut (pending, approved, paid) |
+| `GET` | `/api/v1/ambassador/commissions` | Lister l'historique détaillé des commissions (`?status=`, `?month=`) |
+| `GET` | `/api/v1/ambassador/withdrawals` | Historique des retraits Mobile Money demandés |
+| `POST` | `/api/v1/ambassador/withdrawals` | Demander un retrait (min 5 000 FCFA, max mensuel UEMOA vérifié) |
+
+### 🛡️ Routes d'administration Ambassadeur
+
+_Ces routes nécessitent que l'utilisateur soit un administrateur (email dans la variable `ADMIN_EMAILS`)._
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/ambassador/admin/list` | Lister tous les ambassadeurs |
+| `PATCH` | `/api/v1/ambassador/admin/:id/level` | Forcer le changement de niveau (standard/certified) |
+| `PATCH` | `/api/v1/ambassador/admin/:id/status` | Suspendre/Réactiver un ambassadeur |
+| `GET` | `/api/v1/ambassador/admin/commissions` | Lister toutes les commissions générées par tous les ambassadeurs |
+| `PATCH` | `/api/v1/ambassador/admin/commissions/:id` | **Approuver** une commission en attente (crédite le `available_balance` du parrain) |
+| `PATCH` | `/api/v1/ambassador/admin/withdrawals/:id` | **Traiter** une demande de retrait (complétée, échouée — rembourse si échouée) |
+
+## 📺 SHALOM TV (`/api/v1/shalom-tv`)
+
+### Routes Publiques (Accessibles aux abonnés / essai gratuit)
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/shalom-tv` | Lister les contenus publiés (avec filtres `?target_audience=adult/child` et `?type=video/audio/text`) |
+| `GET` | `/api/v1/shalom-tv/:id` | Récupérer un contenu spécifique (avec lecteur et ressources) |
+
+### 🛡️ Routes Administrateur
+| Méthode | Chemin | Description |
+|---|---|---|
+| `POST` | `/api/v1/shalom-tv` | Créer un nouveau contenu (upload multimédia direct) |
+| `PUT` | `/api/v1/shalom-tv/:id` | Modifier un contenu existant (remplacer les médias, changer le titre) |
+| `DELETE` | `/api/v1/shalom-tv/:id` | Supprimer un contenu (Soft delete) |

@@ -4,10 +4,17 @@
 const dotenv = require('dotenv');
 dotenv.config();
 
+const PORT = parseInt(process.env.PORT, 10) || 3000;
+
 const env = {
   // Serveur
-  PORT: parseInt(process.env.PORT, 10) || 3000,
+  PORT,
   NODE_ENV: process.env.NODE_ENV || 'development',
+  // URL publique du backend — sert à construire des URLs absolues pour les
+  // fichiers téléversés (avatar_url, media_url, ...), car les chemins relatifs
+  // ne passent pas la validation isURL() et ne se résolvent pas correctement
+  // depuis le frontend (origine différente).
+  PUBLIC_URL: process.env.PUBLIC_URL || `http://localhost:${PORT}`,
 
   // Base de données PostgreSQL
   DATABASE_URL: process.env.DATABASE_URL,

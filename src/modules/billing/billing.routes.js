@@ -5,6 +5,7 @@ const express = require('express');
 const router = express.Router();
 const controller = require('./billing.controller');
 const { authenticate } = require('../auth/auth.middleware');
+const { requireActiveSubscription } = require('../../middlewares/subscription.middleware');
 const { requireBusiness } = require('./billing.middleware');
 const v = require('./billing.validator');
 
@@ -13,6 +14,7 @@ const v = require('./billing.validator');
 router.get('/public/invoices/:token', v.tokenParamValidator, controller.printInvoicePublic);
 
 router.use(authenticate);
+router.use(requireActiveSubscription);
 
 // --- Entreprise ---
 router.post('/businesses', v.createBusinessValidator, controller.createBusiness);

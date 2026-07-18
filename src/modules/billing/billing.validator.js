@@ -12,7 +12,7 @@ const tokenParamValidator = [param('token').isUUID().withMessage('Jeton de parta
 const createBusinessValidator = [
   body('name').trim().notEmpty().withMessage("Le nom de l'entreprise est obligatoire")
     .isLength({ max: 255 }).withMessage("Le nom ne peut pas dépasser 255 caractères"),
-  body('logo_url').optional({ nullable: true }).isURL().withMessage('logo_url doit être une URL valide'),
+  body('logo_url').optional({ nullable: true }).isURL({ require_tld: false }).withMessage('logo_url doit être une URL valide'), // accepte aussi les URLs localhost (fichiers téléversés en dev)
   body('address').optional({ nullable: true }).trim().isLength({ max: 1000 }),
   body('phone').optional({ nullable: true }).trim().isLength({ max: 50 }),
   body('tax_id').optional({ nullable: true }).trim().isLength({ max: 100 }),
@@ -23,7 +23,7 @@ const createBusinessValidator = [
 const updateBusinessValidator = [
   body('name').optional().trim().notEmpty().withMessage('Le nom ne peut pas être vide')
     .isLength({ max: 255 }),
-  body('logo_url').optional({ nullable: true }).isURL().withMessage('logo_url doit être une URL valide'),
+  body('logo_url').optional({ nullable: true }).isURL({ require_tld: false }).withMessage('logo_url doit être une URL valide'), // accepte aussi les URLs localhost (fichiers téléversés en dev)
   body('address').optional({ nullable: true }).trim().isLength({ max: 1000 }),
   body('phone').optional({ nullable: true }).trim().isLength({ max: 50 }),
   body('tax_id').optional({ nullable: true }).trim().isLength({ max: 100 }),

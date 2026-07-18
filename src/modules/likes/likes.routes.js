@@ -4,12 +4,14 @@
 const { Router } = require('express');
 const likesController = require('./likes.controller');
 const { authenticate } = require('../auth/auth.middleware');
+const { requireActiveSubscription } = require('../../middlewares/subscription.middleware');
 const { likeSchema } = require('./likes.validator');
 
 const router = Router();
 
 // L'authentification est requise pour toutes les actions de like
 router.use(authenticate);
+router.use(requireActiveSubscription);
 
 /**
  * @swagger

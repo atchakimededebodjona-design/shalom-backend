@@ -27,6 +27,7 @@ const toolsRoutes = require('./modules/tools/tools.routes');
 const communityRoutes = require('./modules/community/community.routes');
 const walletRoutes = require('./modules/wallet/wallet.routes');
 const billingRoutes = require('./modules/billing/billing.routes');
+const ambassadorRoutes = require('./modules/ambassador/ambassador.routes');
 
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./config/swagger');
@@ -104,7 +105,12 @@ app.use('/api/v1/tools', toolsRoutes);
 app.use('/api/v1/community', communityRoutes);
 app.use('/api/v1/wallet', walletRoutes);
 app.use('/api/v1/billing', billingRoutes);
+const shalomTvRoutes = require('./modules/shalom-tv/shalom-tv.routes');
+const adsRoutes = require('./modules/ads/ads.routes');
 
+app.use('/api/v1/ambassador', ambassadorRoutes);
+app.use('/api/v1/shalom-tv', shalomTvRoutes);
+app.use('/api/v1/ads', adsRoutes);
 // --- Gestion des erreurs ---
 
 // 404 — Route non trouvée

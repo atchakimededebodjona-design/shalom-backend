@@ -25,17 +25,38 @@ const createPost = async (authorId, postData) => {
  * Seuls les posts avec status = 'publie' sont renvoyés
  * @param {number} limit - Nombre d'éléments par page
  * @param {number} offset - Décalage pour la pagination
+ * @param {string|null} groupId - si fourni, ne renvoie que les publications de ce groupe
+ *   (visible si le groupe est public, ou si l'utilisateur en est membre actif)
  * @returns {Promise<{ posts: Array, total: number }>}
  */
-const getFeed = async (userId, limit, offset) => {
-  // Compter le total de posts publiés
+const getFeed = async (userId, limit, offset, groupId = null) => {
+  const groupFilter = groupId
+    ? `AND p.group_id = $4 AND (
+         EXISTS (SELECT 1 FROM groups g WHERE g.id = $4 AND g.visibility = 'public')
+         OR EXISTS (
+           SELECT 1 FROM group_members gm
+           WHERE gm.group_id = $4 AND gm.user_id = $1 AND gm.status = 'actif'
+         )
+       )`
+    : '';
+  const countParams = groupId ? [userId, groupId] : [];
+
+  // Compter le total de posts publiés (dans le groupe si groupId fourni)
   const countResult = await query(
-    `SELECT count(*) FROM posts WHERE status = 'publie'`
+    `SELECT count(*) FROM posts p WHERE p.status = 'publie' ${groupId ? `AND p.group_id = $2 AND (
+         EXISTS (SELECT 1 FROM groups g WHERE g.id = $2 AND g.visibility = 'public')
+         OR EXISTS (
+           SELECT 1 FROM group_members gm
+           WHERE gm.group_id = $2 AND gm.user_id = $1 AND gm.status = 'actif'
+         )
+       )` : ''}`,
+    countParams
   );
   const total = parseInt(countResult.rows[0].count, 10);
 
   // Récupérer les posts + infos auteur + état pour l'utilisateur courant
   // (is_liked = a-t-il liké ce post ; is_following = suit-il l'auteur)
+  const queryParams = groupId ? [userId, limit, offset, groupId] : [userId, limit, offset];
   const postsResult = await query(
     `SELECT
       p.*,
@@ -50,10 +71,10 @@ const getFeed = async (userId, limit, offset) => {
       ) AS is_following
      FROM posts p
      JOIN profiles pr ON p.author_id = pr.user_id
-     WHERE p.status = 'publie'
+     WHERE p.status = 'publie' ${groupFilter}
      ORDER BY p.created_at DESC
      LIMIT $2 OFFSET $3`,
-    [userId, limit, offset]
+    queryParams
   );
 
   return { posts: postsResult.rows, total };

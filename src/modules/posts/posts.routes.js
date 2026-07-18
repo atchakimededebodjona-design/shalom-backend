@@ -4,12 +4,14 @@
 const { Router } = require('express');
 const postsController = require('./posts.controller');
 const { authenticate } = require('../auth/auth.middleware');
-const { createPostSchema, updatePostSchema, postIdSchema } = require('./posts.validator');
+const { requireActiveSubscription } = require('../../middlewares/subscription.middleware');
+const { createPostSchema, updatePostSchema, postIdSchema, getFeedSchema } = require('./posts.validator');
 
 const router = Router();
 
 // Toutes les routes de posts nécessitent une authentification
 router.use(authenticate);
+router.use(requireActiveSubscription);
 
 /**
  * @swagger
@@ -28,13 +30,18 @@ router.use(authenticate);
  *         name: limit
  *         schema:
  *           type: integer
+ *       - in: query
+ *         name: group_id
+ *         schema:
+ *           type: string
+ *         description: Filtrer sur les publications d'un groupe précis
  *     responses:
  *       200:
  *         description: Liste des publications
  *       401:
  *         description: Non authentifié
  */
-router.get('/', postsController.getFeed);
+router.get('/', getFeedSchema, postsController.getFeed);
 
 /**
  * @swagger

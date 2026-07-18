@@ -12,10 +12,12 @@ const { AppError } = require('../../middlewares/error.middleware');
  */
 const getFeed = async (req, res, next) => {
   try {
+    if (hasValidationErrors(req, res)) return;
+
     // Pagination depuis les utilitaires
     const { page, limit, offset } = getPagination(req.query);
 
-    const { posts, total } = await postsService.getFeed(req.user.id, limit, offset);
+    const { posts, total } = await postsService.getFeed(req.user.id, limit, offset, req.query.group_id || null);
     const pagination = formatPagination(page, limit, total);
 
     return res.status(200).json({

@@ -6,6 +6,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { AppError } = require('../../middlewares/error.middleware');
 const { identifier } = require('./file-signature');
+const env = require('../../config/env');
 
 const UPLOADS_DIR = path.join(__dirname, '..', '..', '..', 'uploads');
 
@@ -42,7 +43,7 @@ const saveUpload = (buffer) => {
   const filePath = path.join(UPLOADS_DIR, filename);
   fs.writeFileSync(filePath, buffer);
 
-  return { url: `/uploads/${filename}`, mime: detected.mime, size: buffer.length };
+  return { url: `${env.PUBLIC_URL}/uploads/${filename}`, mime: detected.mime, size: buffer.length };
 };
 
 module.exports = { saveUpload };

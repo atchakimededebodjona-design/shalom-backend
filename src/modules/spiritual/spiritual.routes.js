@@ -5,6 +5,7 @@
 const { Router } = require('express');
 const controller = require('./spiritual.controller');
 const { authenticate } = require('../auth/auth.middleware');
+const { requireActiveSubscription } = require('../../middlewares/subscription.middleware');
 const requireAdmin = require('../../middlewares/admin.middleware');
 const {
   createPlanValidator,
@@ -30,6 +31,7 @@ const {
 const router = Router();
 
 router.use(authenticate);
+router.use(requireActiveSubscription);
 
 /**
  * @swagger

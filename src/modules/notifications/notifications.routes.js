@@ -5,9 +5,11 @@ const { getNotifications, getUnreadCount, markAsRead, markAllAsRead } = require(
 const { listNotificationsValidator, updateNotificationValidator } = require('./notifications.validator');
 
 const { authenticate } = require('../auth/auth.middleware');
+const { requireActiveSubscription } = require('../../middlewares/subscription.middleware');
 
 // Toutes les routes de notifications nécessitent une authentification
 router.use(authenticate);
+router.use(requireActiveSubscription);
 
 /**
  * @swagger

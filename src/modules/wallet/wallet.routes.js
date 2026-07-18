@@ -8,6 +8,7 @@
 const { Router } = require('express');
 const controller = require('./wallet.controller');
 const { authenticate } = require('../auth/auth.middleware');
+const { requireActiveSubscription } = require('../../middlewares/subscription.middleware');
 const {
   listTransactionsValidator,
   incomeValidator,
@@ -70,6 +71,7 @@ router.post('/webhook/:provider', controller.handleWebhook);
 //  À partir d'ici : authentification requise
 // =========================================================================
 router.use(authenticate);
+router.use(requireActiveSubscription);
 
 /**
  * @swagger

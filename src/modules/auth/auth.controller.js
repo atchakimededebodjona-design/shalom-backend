@@ -8,6 +8,7 @@ const env = require('../../config/env');
 const { AppError } = require('../../middlewares/error.middleware');
 const authService = require('./auth.service');
 const profilesService = require('../profiles/profiles.service');
+const ambassadorService = require('../ambassador/ambassador.service');
 
 // Constante pour le nombre de rounds bcrypt
 const BCRYPT_SALT_ROUNDS = 12;
@@ -67,6 +68,10 @@ const register = async (req, res, next) => {
 
     // Créer le profil associé via le service profiles (plan = 'free' par défaut)
     const profile = await profilesService.createProfile(user.id, display_name);
+
+    // Inscription automatique au programme ambassadeur dès l'inscription
+    await ambassadorService.joinProgram(user.id);
+    profile.is_ambassador = true; // Pour la réponse json
 
     // Générer les tokens
     const accessToken = generateAccessToken(user);

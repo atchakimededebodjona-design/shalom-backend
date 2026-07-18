@@ -66,8 +66,20 @@ const postIdSchema = [
     .withMessage('L\'ID du post doit être un UUID valide'),
 ];
 
+/**
+ * Validation pour le fil d'actualité — group_id optionnel pour filtrer
+ * sur les publications d'un groupe précis (page du groupe).
+ */
+const getFeedSchema = [
+  query('group_id')
+    .optional()
+    .isUUID()
+    .withMessage('L\'ID du groupe doit être un UUID valide'),
+];
+
 module.exports = {
   createPostSchema,
   updatePostSchema,
   postIdSchema,
+  getFeedSchema,
 };

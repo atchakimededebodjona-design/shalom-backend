@@ -4,12 +4,14 @@
 const { Router } = require('express');
 const commentsController = require('./comments.controller');
 const { authenticate } = require('../auth/auth.middleware');
+const { requireActiveSubscription } = require('../../middlewares/subscription.middleware');
 const { addCommentSchema, postIdSchema, commentIdSchema } = require('./comments.validator');
 
 const router = Router();
 
 // Toutes les routes nécessitent l'authentification
 router.use(authenticate);
+router.use(requireActiveSubscription);
 
 /**
  * @swagger

@@ -5,6 +5,7 @@
 const { Router } = require('express');
 const controller = require('./finance.controller');
 const { authenticate } = require('../auth/auth.middleware');
+const { requireActiveSubscription } = require('../../middlewares/subscription.middleware');
 const {
   createCategoryValidator,
   updateCategoryValidator,
@@ -21,6 +22,7 @@ const router = Router();
 
 // Toutes les routes finance nécessitent une authentification.
 router.use(authenticate);
+router.use(requireActiveSubscription);
 
 /**
  * @swagger

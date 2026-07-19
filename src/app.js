@@ -107,10 +107,12 @@ app.use('/api/v1/wallet', walletRoutes);
 app.use('/api/v1/billing', billingRoutes);
 const shalomTvRoutes = require('./modules/shalom-tv/shalom-tv.routes');
 const adsRoutes = require('./modules/ads/ads.routes');
+const bibleRoutes = require('./modules/bible/bible.routes');
 
 app.use('/api/v1/ambassador', ambassadorRoutes);
 app.use('/api/v1/shalom-tv', shalomTvRoutes);
 app.use('/api/v1/ads', adsRoutes);
+app.use('/api/v1/bible', bibleRoutes);
 // --- Gestion des erreurs ---
 
 // 404 — Route non trouvée

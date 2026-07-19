@@ -8,14 +8,20 @@ const { query } = require('../../config/db');
 //  Plans de lecture biblique
 // =========================================================================
 
-// Catalogue : plans publics + plans créés par l'utilisateur.
+// Catalogue : plans publics + plans créés par l'utilisateur. Inclut le
+// passage du jour courant (celui de l'utilisateur s'il a démarré, sinon le
+// jour 1) pour affichage direct sans requête supplémentaire.
 const listPlans = async (userId) => {
   const result = await query(
     `SELECT p.*,
             (SELECT count(*)::int FROM bible_reading_plan_days d WHERE d.plan_id = p.id) AS days_defined,
-            pr.status AS my_status, pr.current_day AS my_current_day, pr.streak_count AS my_streak
+            pr.status AS my_status, pr.current_day AS my_current_day, pr.streak_count AS my_streak,
+            cd.passages AS current_day_passages,
+            cd.start_book_id AS current_day_start_book_id,
+            cd.start_chapter AS current_day_start_chapter
      FROM bible_reading_plans p
      LEFT JOIN user_reading_progress pr ON pr.plan_id = p.id AND pr.user_id = $1
+     LEFT JOIN bible_reading_plan_days cd ON cd.plan_id = p.id AND cd.day_number = COALESCE(pr.current_day, 1)
      WHERE p.is_public = true OR p.created_by = $1
      ORDER BY p.created_at DESC`,
     [userId]
@@ -86,9 +92,13 @@ const startPlan = async (userId, planId) => {
 
 const listProgress = async (userId) => {
   const result = await query(
-    `SELECT pr.*, p.title, p.total_days, p.duration_type
+    `SELECT pr.*, p.title, p.total_days, p.duration_type,
+            cd.passages AS current_day_passages,
+            cd.start_book_id AS current_day_start_book_id,
+            cd.start_chapter AS current_day_start_chapter
      FROM user_reading_progress pr
      JOIN bible_reading_plans p ON p.id = pr.plan_id
+     LEFT JOIN bible_reading_plan_days cd ON cd.plan_id = p.id AND cd.day_number = pr.current_day
      WHERE pr.user_id = $1
      ORDER BY pr.started_at DESC`,
     [userId]
@@ -254,10 +264,50 @@ const createVerse = async ({ content, reference, type, display_date }) => {
   return result.rows[0];
 };
 
+const dayOfYearOf = (d) => Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000);
+
+/**
+ * Si aucun verset admin n'est disponible, en génère un pour aujourd'hui à
+ * partir du vrai texte biblique (module bible), et le persiste dans
+ * daily_verses (display_date = aujourd'hui) afin que : (1) les favoris
+ * fonctionnent normalement (user_verse_interactions référence daily_verses),
+ * (2) les appels suivants le même jour retrouvent directement cette ligne.
+ * Choix déterministe par jour (même verset pour tout le monde ce jour-là).
+ */
+const generateVerseOfTheDayFromBible = async () => {
+  const countRes = await query('SELECT count(*)::int AS n FROM bible_verses');
+  const total = countRes.rows[0].n;
+  if (total === 0) return null;
+
+  const now = new Date();
+  const seed = now.getFullYear() * 1000 + dayOfYearOf(now);
+  const offset = seed % total;
+
+  const picked = await query(
+    `SELECT v.text, v.chapter_number, v.verse_number, b.name AS book_name
+     FROM bible_verses v
+     JOIN bible_books b ON b.id = v.book_id
+     ORDER BY b.book_order ASC, v.chapter_number ASC, v.verse_number ASC
+     LIMIT 1 OFFSET $1`,
+    [offset]
+  );
+  const row = picked.rows[0];
+  if (!row) return null;
+
+  const inserted = await query(
+    `INSERT INTO daily_verses (content, reference, type, display_date)
+     VALUES ($1, $2, 'verse', CURRENT_DATE)
+     RETURNING *`,
+    [row.text, `${row.book_name} ${row.chapter_number}:${row.verse_number}`]
+  );
+  return inserted.rows[0];
+};
+
 /**
  * Verset du jour : celui assigné à la date du jour, sinon rotation déterministe
- * sur les versets sans date (stable pour une journée donnée). La consultation
- * est enregistrée dans user_verse_interactions.
+ * sur les versets sans date (stable pour une journée donnée), sinon généré
+ * automatiquement depuis le vrai texte biblique. La consultation est
+ * enregistrée dans user_verse_interactions.
  */
 const getVerseOfTheDay = async (userId) => {
   let res = await query(`SELECT * FROM daily_verses WHERE display_date = CURRENT_DATE LIMIT 1`);
@@ -266,15 +316,19 @@ const getVerseOfTheDay = async (userId) => {
   if (!verse) {
     const countRes = await query(`SELECT count(*)::int AS n FROM daily_verses WHERE display_date IS NULL`);
     const n = countRes.rows[0].n;
-    if (n === 0) return null;
-    const now = new Date();
-    const dayOfYear = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000);
-    const rot = await query(
-      `SELECT * FROM daily_verses WHERE display_date IS NULL
-       ORDER BY created_at ASC, id ASC LIMIT 1 OFFSET $1`,
-      [dayOfYear % n]
-    );
-    verse = rot.rows[0];
+    if (n > 0) {
+      const dayOfYear = dayOfYearOf(new Date());
+      const rot = await query(
+        `SELECT * FROM daily_verses WHERE display_date IS NULL
+         ORDER BY created_at ASC, id ASC LIMIT 1 OFFSET $1`,
+        [dayOfYear % n]
+      );
+      verse = rot.rows[0];
+    }
+  }
+
+  if (!verse) {
+    verse = await generateVerseOfTheDayFromBible();
   }
   if (!verse) return null;
 

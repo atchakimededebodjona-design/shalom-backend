@@ -131,7 +131,7 @@ const deleteClient = async (businessId, clientId) => {
 // =========================================================================
 
 const createInvoice = async (business, data) => {
-  const { client_id, items, tax_rate, issue_date, due_date, notes } = data;
+  const { client_id, items, tax_rate, issue_date, due_date, notes, discount_amount, down_payment } = data;
 
   const clientCheck = await query(
     'SELECT id FROM clients WHERE id = $1 AND business_id = $2 AND deleted_at IS NULL',
@@ -139,6 +139,28 @@ const createInvoice = async (business, data) => {
   );
   if (clientCheck.rows.length === 0) {
     throw new AppError('Client introuvable', 404, 'CLIENT_NOT_FOUND');
+  }
+
+  let subtotal = 0;
+  const processedItems = items.map((item, index) => {
+    const quantity = parseFloat(item.quantity);
+    const unitPrice = parseInt(item.unit_price, 10);
+    const lineTotal = Math.round(quantity * unitPrice);
+    subtotal += lineTotal;
+    return { description: item.description, quantity, unitPrice, lineTotal, sortOrder: item.sort_order ?? index };
+  });
+
+  const taxRate = tax_rate ? parseFloat(tax_rate) : 0;
+  const taxAmount = Math.round((subtotal * taxRate) / 100);
+  const total = subtotal + taxAmount;
+
+  const discountAmount = discount_amount ? parseInt(discount_amount, 10) : 0;
+  if (discountAmount > total) {
+    throw new AppError('La remise ne peut pas dépasser le total de la facture', 400, 'DISCOUNT_EXCEEDS_TOTAL');
+  }
+  const downPaymentAmount = down_payment ? parseInt(down_payment, 10) : 0;
+  if (downPaymentAmount > total - discountAmount) {
+    throw new AppError("L'acompte ne peut pas dépasser le montant net à payer", 400, 'DOWN_PAYMENT_EXCEEDS_DUE');
   }
 
   const client = await pool.connect();
@@ -160,29 +182,16 @@ const createInvoice = async (business, data) => {
     const nextNumber = parseInt(countResult.rows[0].count, 10) + 1;
     const invoiceNumber = `${prefix}-${currentYear}-${nextNumber.toString().padStart(4, '0')}`;
 
-    let subtotal = 0;
-    const processedItems = items.map((item, index) => {
-      const quantity = parseFloat(item.quantity);
-      const unitPrice = parseInt(item.unit_price, 10);
-      const lineTotal = Math.round(quantity * unitPrice);
-      subtotal += lineTotal;
-      return { description: item.description, quantity, unitPrice, lineTotal, sortOrder: item.sort_order ?? index };
-    });
-
-    const taxRate = tax_rate ? parseFloat(tax_rate) : 0;
-    const taxAmount = Math.round((subtotal * taxRate) / 100);
-    const total = subtotal + taxAmount;
-
     const invoiceResult = await client.query(
       `INSERT INTO invoices (business_id, client_id, invoice_number, status, issue_date, due_date,
-                              subtotal, tax_rate, tax_amount, total, amount_paid, notes)
-       VALUES ($1,$2,$3,'draft',$4,$5,$6,$7,$8,$9,0,$10)
+                              subtotal, tax_rate, tax_amount, total, discount_amount, amount_paid, notes)
+       VALUES ($1,$2,$3,'draft',$4,$5,$6,$7,$8,$9,$10,0,$11)
        RETURNING *`,
       [
         business.id, client_id, invoiceNumber,
         issue_date || new Date().toISOString().split('T')[0],
         due_date || null,
-        subtotal, taxRate, taxAmount, total, notes || null,
+        subtotal, taxRate, taxAmount, total, discountAmount, notes || null,
       ]
     );
     const invoice = invoiceResult.rows[0];
@@ -197,6 +206,21 @@ const createInvoice = async (business, data) => {
 
     await client.query('COMMIT');
     invoice.items = processedItems;
+
+    // L'acompte versé à la création n'est pas stocké sur la facture : il est
+    // enregistré comme un paiement normal (crédite le wallet, alimente
+    // amount_paid/status) via le même chemin que les paiements ultérieurs.
+    if (downPaymentAmount > 0) {
+      const payment = await createPayment(business, invoice.id, {
+        amount: downPaymentAmount,
+        payment_method: 'cash',
+        payment_date: invoice.issue_date,
+      });
+      const updated = payment.invoice;
+      updated.items = processedItems;
+      return updated;
+    }
+
     return invoice;
   } catch (err) {
     await client.query('ROLLBACK');
@@ -243,7 +267,7 @@ const listInvoices = async (businessId, { page, limit, offset, status }) => {
 };
 
 const updateInvoice = async (businessId, invoiceId, updates) => {
-  const { items, client_id, status, due_date, notes, tax_rate } = updates;
+  const { items, client_id, status, due_date, notes, tax_rate, discount_amount } = updates;
 
   const client = await pool.connect();
   try {
@@ -260,6 +284,7 @@ const updateInvoice = async (businessId, invoiceId, updates) => {
 
     let subtotal = current.subtotal;
     let taxRate = tax_rate !== undefined ? parseFloat(tax_rate) : parseFloat(current.tax_rate);
+    const discountAmount = discount_amount !== undefined ? parseInt(discount_amount, 10) : current.discount_amount;
 
     if (items) {
       await client.query('DELETE FROM invoice_items WHERE invoice_id = $1', [invoiceId]);
@@ -282,8 +307,11 @@ const updateInvoice = async (businessId, invoiceId, updates) => {
 
     const taxAmount = Math.round((subtotal * taxRate) / 100);
     const total = subtotal + taxAmount;
+    if (discountAmount > total) {
+      throw new AppError('La remise ne peut pas dépasser le total de la facture', 400, 'DISCOUNT_EXCEEDS_TOTAL');
+    }
     const newDueDate = due_date !== undefined ? due_date : current.due_date;
-    const newStatus = status !== undefined ? status : computeStatus(current.amount_paid, total, newDueDate);
+    const newStatus = status !== undefined ? status : computeStatus(current.amount_paid, total - discountAmount, newDueDate);
 
     if (client_id) {
       const clientCheck = await client.query(
@@ -299,11 +327,12 @@ const updateInvoice = async (businessId, invoiceId, updates) => {
       `UPDATE invoices
        SET client_id = COALESCE($1, client_id),
            subtotal = $2, tax_rate = $3, tax_amount = $4, total = $5,
-           status = $6, due_date = $7,
-           notes = COALESCE($8, notes)
-       WHERE id = $9 AND business_id = $10
+           discount_amount = $6,
+           status = $7, due_date = $8,
+           notes = COALESCE($9, notes)
+       WHERE id = $10 AND business_id = $11
        RETURNING *`,
-      [client_id || null, subtotal, taxRate, taxAmount, total, newStatus, newDueDate, notes, invoiceId, businessId]
+      [client_id || null, subtotal, taxRate, taxAmount, total, discountAmount, newStatus, newDueDate, notes, invoiceId, businessId]
     );
 
     await client.query('COMMIT');
@@ -346,11 +375,12 @@ const createPayment = async (business, invoiceId, data) => {
       throw new AppError('Facture introuvable', 404, 'INVOICE_NOT_FOUND');
     }
     const invoice = invoiceResult.rows[0];
+    const netTotal = invoice.total - invoice.discount_amount;
 
     const newAmountPaid = invoice.amount_paid + amount;
-    if (newAmountPaid > invoice.total) {
+    if (newAmountPaid > netTotal) {
       throw new AppError(
-        `Le paiement de ${amount} dépasse le montant restant dû de ${invoice.total - invoice.amount_paid}.`,
+        `Le paiement de ${amount} dépasse le montant restant dû de ${netTotal - invoice.amount_paid}.`,
         400,
         'PAYMENT_EXCEEDS_DUE'
       );
@@ -367,7 +397,7 @@ const createPayment = async (business, invoiceId, data) => {
     );
     const payment = paymentResult.rows[0];
 
-    const newStatus = computeStatus(newAmountPaid, invoice.total, invoice.due_date);
+    const newStatus = computeStatus(newAmountPaid, netTotal, invoice.due_date);
     const updatedInvoiceResult = await client.query(
       `UPDATE invoices SET amount_paid = $1, status = $2 WHERE id = $3 RETURNING *`,
       [newAmountPaid, newStatus, invoiceId]
@@ -456,7 +486,7 @@ const deletePayment = async (business, paymentId) => {
       [payment.invoice_id]
     );
     const recalculated = parseInt(sumResult.rows[0].total_paid, 10);
-    const newStatus = computeStatus(recalculated, invoice.total, invoice.due_date);
+    const newStatus = computeStatus(recalculated, invoice.total - invoice.discount_amount, invoice.due_date);
 
     await client.query('UPDATE invoices SET amount_paid = $1, status = $2 WHERE id = $3', [
       recalculated, newStatus, payment.invoice_id,
@@ -612,8 +642,9 @@ const renderInvoiceHtml = ({ invoice, items, business, client }) => {
     <div><span>Sous-total</span><span>${formatAmount(invoice.subtotal, currency)}</span></div>
     <div><span>TVA (${Number(invoice.tax_rate)}%)</span><span>${formatAmount(invoice.tax_amount, currency)}</span></div>
     <div class="total"><span>Total</span><span>${formatAmount(invoice.total, currency)}</span></div>
+    ${invoice.discount_amount > 0 ? `<div><span>Remise</span><span>-${formatAmount(invoice.discount_amount, currency)}</span></div>` : ''}
     <div><span>Payé</span><span>${formatAmount(invoice.amount_paid, currency)}</span></div>
-    <div><span>Solde dû</span><span>${formatAmount(invoice.total - invoice.amount_paid, currency)}</span></div>
+    <div><span>Solde dû</span><span>${formatAmount(invoice.total - invoice.discount_amount - invoice.amount_paid, currency)}</span></div>
   </div>
 
   ${invoice.notes ? `<p><strong>Notes :</strong> ${invoice.notes}</p>` : ''}
@@ -636,7 +667,7 @@ const buildWhatsappLink = ({ invoice, business, client }, publicUrl) => {
   const currency = business.currency || 'XOF';
   const message = [
     `Bonjour ${client.name}, voici votre facture ${invoice.invoice_number} de ${business.name}.`,
-    `Montant total : ${formatAmount(invoice.total, currency)}`,
+    `Montant à payer : ${formatAmount(invoice.total - invoice.discount_amount, currency)}`,
     invoice.due_date ? `Échéance : ${new Date(invoice.due_date).toLocaleDateString('fr-FR')}` : null,
     `Voir/imprimer la facture : ${publicUrl}`,
   ].filter(Boolean).join('\n');

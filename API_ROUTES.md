@@ -505,3 +505,56 @@ strictement positifs.
 > `initiateProviderPayment`) et `wallet.controller.js` (`normalizeProviderPayload`).
 > La vérification HMAC exige de capter le **corps brut** de la requête webhook
 > (ex. `express.json({ verify })`).
+
+---
+
+## 🧾 18. Facturation « Reçu+ » (`/api/v1/invoices`, `/api/v1/clients`)
+
+Module de facturation intégré (ex-produit **Reçu+**). Factures avec lignes, clients
+à facturer et reçus (paiements). Toutes les routes sont **authentifiées** et
+cloisonnées à l'utilisateur connecté. Les totaux sont **toujours calculés côté
+serveur**. **Chaque paiement crédite, dans la même transaction, le portefeuille
+SHALOM** du propriétaire (`wallet_transactions.source = 'invoice'`,
+`reference_type = 'recu_invoice'`).
+
+### Clients
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/clients` | Lister ses clients (recherche `?search=`, paginé) |
+| `POST` | `/api/v1/clients` | Créer un client (`{ name, email?, phone?, address? }`) |
+| `GET` | `/api/v1/clients/:id` | Détail d'un client |
+| `PATCH` | `/api/v1/clients/:id` | Mettre à jour un client |
+| `DELETE`| `/api/v1/clients/:id` | Supprimer un client (soft delete) |
+
+### Factures
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/invoices/overview` | Aperçu : compteurs par statut, total facturé / encaissé / restant dû |
+| `GET` | `/api/v1/invoices` | Lister ses factures — filtres `?status=` `?client_id=` `?from=` `?to=`, paginé |
+| `POST` | `/api/v1/invoices` | Créer une facture avec ses lignes (`{ invoice_number, client_id?, currency?, issue_date?, due_date?, tax_rate?, notes?, items: [{ description, quantity, unit_price }] }`) |
+| `GET` | `/api/v1/invoices/:id` | Détail (en-tête + lignes + paiements) |
+| `PATCH` | `/api/v1/invoices/:id` | Mettre à jour l'en-tête (recalcule taxes/total si `tax_rate` change) |
+| `DELETE`| `/api/v1/invoices/:id` | Supprimer une facture (soft delete) |
+
+### Reçus / paiements
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/invoices/:id/payments` | Lister les reçus d'une facture |
+| `POST` | `/api/v1/invoices/:id/payments` | Enregistrer un paiement (`{ amount, method?, paid_at?, reference?, note? }`) → met à jour le statut **ET crédite le portefeuille** |
+
+Statuts de facture : `draft`, `sent`, `partially_paid`, `paid`, `overdue`,
+`cancelled`. Moyens de paiement : `cash`, `mobile_money`, `bank_transfer`,
+`card`, `other`. Devise par défaut : **XOF**. Montants `NUMERIC(14,2)`.
+
+L'enregistrement d'un paiement se fait **sous verrou** (`SELECT … FOR UPDATE` sur
+la facture) : insertion du reçu, crédit du portefeuille (helpers transactionnels
+`lockOrCreateWalletTx` / `applyMovementTx` de `wallet.service`) et mise à jour du
+statut (`partially_paid` / `paid`) partagent **une seule transaction** — pas de
+paiement enregistré sans crédit correspondant. Le reçu conserve l'`id` du mouvement
+de portefeuille créé (`billing_payments.wallet_transaction_id`).
+
+Tables (migration `009_billing_module.sql`, préfixe `billing_`) : `billing_clients`,
+`billing_invoices`, `billing_invoice_items`, `billing_payments`.

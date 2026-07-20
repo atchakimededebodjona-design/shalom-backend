@@ -664,6 +664,11 @@ const initiateProviderPayment = async ({ provider, amount, currency = 'XOF' }) =
 
 module.exports = {
   SUPPORTED_PROVIDERS,
+  // helpers transactionnels (pour intégrations intra-process qui doivent créditer
+  // le portefeuille DANS leur propre transaction — ex: module Facturation Reçu+).
+  // À n'utiliser qu'entre BEGIN et COMMIT d'un client pool.connect().
+  lockOrCreateWalletTx,
+  applyMovementTx,
   // mouvements
   creditWallet,
   debitWallet,

@@ -8,6 +8,9 @@ const env = {
   // Serveur
   PORT: parseInt(process.env.PORT, 10) || 3000,
   NODE_ENV: process.env.NODE_ENV || 'development',
+  // URL publique de l'API (prod), ex: https://api.mondomaine.com — utilisée par
+  // Swagger pour le bouton « Try it out ». En dev, repli sur http://localhost:PORT.
+  API_PUBLIC_URL: process.env.API_PUBLIC_URL || null,
 
   // Base de données PostgreSQL
   DATABASE_URL: process.env.DATABASE_URL,

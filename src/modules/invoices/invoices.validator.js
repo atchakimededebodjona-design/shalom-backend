@@ -7,7 +7,8 @@ const INVOICE_STATUSES = ['draft', 'sent', 'partially_paid', 'paid', 'overdue', 
 const PAYMENT_METHODS = ['cash', 'mobile_money', 'bank_transfer', 'card', 'other'];
 
 const createValidator = [
-  body('invoice_number').trim().notEmpty().withMessage('Le numéro de facture est requis')
+  // Optionnel : si absent, le serveur génère <PRÉFIXE>-<ANNÉE>-<SÉQ> depuis l'entreprise.
+  body('invoice_number').optional({ checkFalsy: true }).trim()
     .isLength({ max: 50 }).withMessage('Le numéro ne peut pas dépasser 50 caractères'),
   body('client_id').optional({ nullable: true }).isUUID().withMessage('Identifiant de client invalide'),
   body('currency').optional().trim().isLength({ min: 3, max: 3 }).withMessage('La devise doit faire 3 lettres (ex: XOF)'),

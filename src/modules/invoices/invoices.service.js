@@ -20,10 +20,32 @@ const computeTotals = (items, taxRate) => {
   return { subtotal, tax_amount, total };
 };
 
+/**
+ * Génère un numéro de facture unique pour l'émetteur :
+ *   <PRÉFIXE entreprise>-<ANNÉE>-<SÉQUENCE 4 chiffres>  (ex : FAC-2026-0001).
+ * Le préfixe vient du profil entreprise du membre (défaut « FAC »). La séquence
+ * compte les factures déjà numérotées avec ce préfixe/année (robuste au soft delete).
+ */
+const generateInvoiceNumber = async (dbClient, userId, issueDate) => {
+  const year = new Date(issueDate || Date.now()).getFullYear();
+  const biz = await dbClient.query(
+    `SELECT invoice_prefix FROM billing_businesses WHERE user_id = $1 AND deleted_at IS NULL`,
+    [userId]
+  );
+  const prefix = (biz.rows[0] && biz.rows[0].invoice_prefix) || 'FAC';
+  const like = `${prefix}-${year}-%`;
+  const counted = await dbClient.query(
+    `SELECT count(*)::int AS n FROM billing_invoices WHERE user_id = $1 AND invoice_number LIKE $2`,
+    [userId, like]
+  );
+  const seq = String(counted.rows[0].n + 1).padStart(4, '0');
+  return `${prefix}-${year}-${seq}`;
+};
+
 /** Recharge une facture complète (en-tête + lignes + paiements). */
 const getById = async (id, userId) => {
   const invoiceResult = await query(
-    `SELECT i.*, c.name AS client_name, c.email AS client_email
+    `SELECT i.*, c.name AS client_name, c.email AS client_email, c.phone AS client_phone, c.address AS client_address
      FROM billing_invoices i
      LEFT JOIN billing_clients c ON i.client_id = c.id
      WHERE i.id = $1 AND i.user_id = $2 AND i.deleted_at IS NULL`,
@@ -61,6 +83,8 @@ const create = async (userId, data) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    // Numéro fourni par l'appelant, sinon généré depuis le préfixe de l'entreprise.
+    const number = invoice_number || (await generateInvoiceNumber(client, userId, issue_date));
     const inserted = await client.query(
       `INSERT INTO billing_invoices
          (user_id, client_id, invoice_number, currency, issue_date, due_date, notes,
@@ -70,7 +94,7 @@ const create = async (userId, data) => {
       [
         userId,
         client_id || null,
-        invoice_number,
+        number,
         currency || 'XOF',
         issue_date || null,
         due_date || null,

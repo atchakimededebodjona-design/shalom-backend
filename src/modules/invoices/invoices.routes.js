@@ -81,4 +81,22 @@ router.delete('/:id', idParamValidator, controller.remove);
 router.get('/:id/payments', idParamValidator, controller.listPayments);
 router.post('/:id/payments', paymentValidator, controller.addPayment);
 
+/**
+ * @swagger
+ * /api/v1/billing/invoices/{id}/print:
+ *   get:
+ *     summary: Facture imprimable (HTML autonome avec en-tête entreprise + logo)
+ *     tags: [Facturation (Reçu+)]
+ *     security: [{ bearerAuth: [] }]
+ *     responses: { 200: { description: Document HTML } }
+ * /api/v1/billing/invoices/{id}/whatsapp-link:
+ *   get:
+ *     summary: Lien WhatsApp pré-rempli pour partager la facture
+ *     tags: [Facturation (Reçu+)]
+ *     security: [{ bearerAuth: [] }]
+ *     responses: { 200: { description: "{ whatsapp_url }" } }
+ */
+router.get('/:id/print', idParamValidator, controller.print);
+router.get('/:id/whatsapp-link', idParamValidator, controller.whatsappLink);
+
 module.exports = router;

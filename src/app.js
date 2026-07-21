@@ -28,6 +28,7 @@ const communityRoutes = require('./modules/community/community.routes');
 const walletRoutes = require('./modules/wallet/wallet.routes');
 const clientsRoutes = require('./modules/clients/clients.routes');
 const invoicesRoutes = require('./modules/invoices/invoices.routes');
+const adsRoutes = require('./modules/ads/ads.routes');
 
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./config/swagger');
@@ -107,6 +108,8 @@ app.use('/api/v1/wallet', walletRoutes);
 // --- Module Facturation « Reçu+ » (intégré) ---
 app.use('/api/v1/clients', clientsRoutes);
 app.use('/api/v1/invoices', invoicesRoutes);
+// --- Espace publicitaire (contenu géré par les administrateurs) ---
+app.use('/api/v1/ads', adsRoutes);
 
 // --- Gestion des erreurs ---
 

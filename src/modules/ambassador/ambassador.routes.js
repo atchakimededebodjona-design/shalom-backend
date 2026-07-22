@@ -296,6 +296,18 @@ router.patch('/admin/commissions/:id', v.adminApproveCommissionValidator, contro
  *     responses:
  *       200: { description: Retrait mis à jour (remboursement automatique si failed/cancelled) }
  */
+/**
+ * @swagger
+ * /api/v1/ambassador/admin/withdrawals:
+ *   get:
+ *     summary: "[Admin] Lister tous les retraits (filtre ?status=)"
+ *     tags: [Ambassador]
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Liste paginée des retraits, tous ambassadeurs confondus }
+ */
+router.get('/admin/withdrawals', controller.adminListWithdrawals);
+
 router.patch('/admin/withdrawals/:id', v.adminProcessWithdrawalValidator, controller.adminProcessWithdrawal);
 
 module.exports = router;

@@ -300,6 +300,21 @@ const adminApproveCommission = async (req, res, next) => {
 };
 
 /**
+ * GET /api/v1/admin/ambassador/withdrawals
+ * Lister tous les retraits (admin)
+ */
+const adminListWithdrawals = async (req, res, next) => {
+  try {
+    if (denyIfNotAdmin(req, res)) return;
+    if (hasValidationErrors(req, res)) return;
+    const result = await service.adminListWithdrawals(req.query);
+    return res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * PATCH /api/v1/admin/ambassador/withdrawals/:id
  * Traiter un retrait (compléter, rejeter, annuler)
  */
@@ -335,5 +350,6 @@ module.exports = {
   adminSetStatus,
   adminListCommissions,
   adminApproveCommission,
+  adminListWithdrawals,
   adminProcessWithdrawal,
 };

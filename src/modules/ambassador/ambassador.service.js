@@ -866,8 +866,8 @@ const adminSetLevel = async (ambassadorId, level) => {
 
   const { rows } = await query(
     `UPDATE ambassador_profiles
-     SET level        = $1,
-         certified_at = CASE WHEN $1 = 'certified' THEN now() ELSE certified_at END,
+     SET level        = $1::ambassador_level,
+         certified_at = CASE WHEN $1::ambassador_level = 'certified' THEN now() ELSE certified_at END,
          updated_at   = now()
      WHERE id = $2 AND deleted_at IS NULL
      RETURNING *`,
@@ -974,6 +974,50 @@ const adminProcessWithdrawal = async (withdrawalId, data) => {
  * @param {object} options - { page, limit, status, month, ambassador_id }
  * @returns {Promise<object>}
  */
+/**
+ * Lister tous les retraits, tous ambassadeurs confondus (admin)
+ * @param {object} options - { page, limit, status }
+ * @returns {Promise<object>}
+ */
+const adminListWithdrawals = async (options = {}) => {
+  const page   = parseInt(options.page, 10)  || 1;
+  const limit  = parseInt(options.limit, 10) || 20;
+  const offset = (page - 1) * limit;
+
+  let where = 'WHERE w.deleted_at IS NULL';
+  const params = [];
+  let idx = 1;
+
+  if (options.status) {
+    where += ` AND w.status = $${idx++}`;
+    params.push(options.status);
+  }
+
+  const countResult = await query(
+    `SELECT COUNT(*) AS total FROM ambassador_withdrawals w ${where}`,
+    params
+  );
+
+  const dataResult = await query(
+    `SELECT w.*,
+            p.display_name AS ambassador_name, u.email AS ambassador_email
+     FROM ambassador_withdrawals w
+     JOIN ambassador_profiles ap ON ap.id = w.ambassador_id
+     JOIN profiles p ON p.user_id = ap.user_id
+     JOIN users   u ON u.id       = ap.user_id
+     ${where}
+     ORDER BY w.requested_at DESC
+     LIMIT $${idx} OFFSET $${idx + 1}`,
+    [...params, limit, offset]
+  );
+
+  const total = parseInt(countResult.rows[0].total, 10);
+  return {
+    withdrawals: dataResult.rows,
+    pagination: { page, limit, total, total_pages: Math.ceil(total / limit) },
+  };
+};
+
 const adminListCommissions = async (options = {}) => {
   const page   = parseInt(options.page, 10)  || 1;
   const limit  = parseInt(options.limit, 10) || 20;
@@ -1049,5 +1093,6 @@ module.exports = {
   adminSetLevel,
   adminSetStatus,
   adminProcessWithdrawal,
+  adminListWithdrawals,
   adminListCommissions,
 };

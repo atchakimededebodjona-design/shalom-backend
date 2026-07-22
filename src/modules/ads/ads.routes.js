@@ -48,11 +48,17 @@ const handleUpload = (req, res, next) => {
 
 // --- Routes Publiques (Utilisateurs connectés) ---
 router.get('/', authenticate, validator.listAdsValidator, controller.listAds);
-router.get('/:id', authenticate, controller.getAd);
 
-// --- Routes Admin ---
+// --- Routes Admin (déclarées avant `/:id` générique pour éviter tout conflit) ---
+router.get('/manage', authenticate, requireAdmin, controller.adminListAds);
+router.get('/:id/reports', authenticate, requireAdmin, controller.adminGetAdReports);
+
+router.get('/:id', authenticate, controller.getAd);
+router.post('/:id/report', authenticate, validator.reportAdValidator, controller.reportAd);
+
 router.post('/', authenticate, requireAdmin, handleUpload, validator.createAdValidator, controller.createAd);
 router.put('/:id', authenticate, requireAdmin, handleUpload, validator.updateAdValidator, controller.updateAd);
+router.patch('/:id', authenticate, requireAdmin, handleUpload, validator.updateAdValidator, controller.updateAd);
 router.delete('/:id', authenticate, requireAdmin, controller.deleteAd);
 
 module.exports = router;

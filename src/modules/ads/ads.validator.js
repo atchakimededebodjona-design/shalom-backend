@@ -19,8 +19,13 @@ const listAdsValidator = [
   query('limit').optional().isInt({ min: 1, max: 100 })
 ];
 
+const reportAdValidator = [
+  body('reason').optional({ checkFalsy: true }).isString().isLength({ max: 300 }).withMessage('Motif trop long (300 caractères max)')
+];
+
 module.exports = {
   createAdValidator,
   updateAdValidator,
-  listAdsValidator
+  listAdsValidator,
+  reportAdValidator
 };

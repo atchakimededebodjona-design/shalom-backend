@@ -125,10 +125,65 @@ const deleteAd = async (adId) => {
   }
 };
 
+// =========================================================================
+// 6. Lister les publicités pour l'admin (toutes, avec compte de signalements)
+// =========================================================================
+
+const getAdsForAdmin = async () => {
+  const { rows } = await query(
+    `SELECT a.*,
+            COALESCE(r.report_count, 0)::int AS report_count
+     FROM ads a
+     LEFT JOIN (
+       SELECT ad_id, COUNT(*) AS report_count
+       FROM ad_reports
+       GROUP BY ad_id
+     ) r ON r.ad_id = a.id
+     WHERE a.deleted_at IS NULL
+     ORDER BY report_count DESC, a.display_order ASC, a.created_at DESC`
+  );
+  return { ads: rows };
+};
+
+// =========================================================================
+// 7. Signaler une publicité (utilisateur connecté)
+// =========================================================================
+
+const reportAd = async (adId, reporterId, reason) => {
+  await getAdById(adId); // 404 si la pub n'existe pas / est supprimée
+
+  await query(
+    `INSERT INTO ad_reports (ad_id, reporter_id, reason)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (ad_id, reporter_id) DO NOTHING`,
+    [adId, reporterId, reason || null]
+  );
+};
+
+// =========================================================================
+// 8. Lister les signalements d'une publicité (admin)
+// =========================================================================
+
+const getAdReports = async (adId) => {
+  const { rows } = await query(
+    `SELECT r.id, r.reason, r.created_at, p.display_name, u.email
+     FROM ad_reports r
+     JOIN users u ON u.id = r.reporter_id
+     LEFT JOIN profiles p ON p.user_id = u.id
+     WHERE r.ad_id = $1
+     ORDER BY r.created_at DESC`,
+    [adId]
+  );
+  return { reports: rows };
+};
+
 module.exports = {
   getAds,
   getAdById,
   createAd,
   updateAd,
-  deleteAd
+  deleteAd,
+  getAdsForAdmin,
+  reportAd,
+  getAdReports
 };

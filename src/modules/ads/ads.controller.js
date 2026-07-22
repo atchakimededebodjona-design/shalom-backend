@@ -104,10 +104,53 @@ const deleteAd = async (req, res, next) => {
   }
 };
 
+// =========================================================================
+// 6. Lister les publicités pour l'admin (toutes + compte de signalements)
+// =========================================================================
+
+const adminListAds = async (req, res, next) => {
+  try {
+    const result = await service.getAdsForAdmin();
+    return res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// =========================================================================
+// 7. Signaler une publicité (utilisateur connecté)
+// =========================================================================
+
+const reportAd = async (req, res, next) => {
+  try {
+    if (hasValidationErrors(req, res)) return;
+    await service.reportAd(req.params.id, req.user.id, req.body.reason);
+    return res.status(200).json({ success: true, message: 'Publicité signalée, merci.' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// =========================================================================
+// 8. Lister les signalements d'une publicité (admin)
+// =========================================================================
+
+const adminGetAdReports = async (req, res, next) => {
+  try {
+    const result = await service.getAdReports(req.params.id);
+    return res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   listAds,
   getAd,
   createAd,
   updateAd,
-  deleteAd
+  deleteAd,
+  adminListAds,
+  reportAd,
+  adminGetAdReports
 };

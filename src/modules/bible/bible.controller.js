@@ -2,6 +2,15 @@ const service = require('./bible.service');
 const { hasValidationErrors } = require('../../utils/validate');
 const { AppError } = require('../../middlewares/error.middleware');
 
+const listVersions = async (req, res, next) => {
+  try {
+    const versions = await service.listVersions();
+    return res.status(200).json({ success: true, data: { versions } });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const listBooks = async (req, res, next) => {
   try {
     const books = await service.listBooks();
@@ -15,7 +24,7 @@ const getChapter = async (req, res, next) => {
   try {
     if (hasValidationErrors(req, res)) return;
     const chapterNumber = parseInt(req.params.chapterNumber, 10);
-    const result = await service.getChapter(req.params.bookId, chapterNumber);
+    const result = await service.getChapter(req.params.bookId, chapterNumber, req.query.version);
     return res.status(200).json({ success: true, data: result });
   } catch (error) {
     next(error);
@@ -29,11 +38,11 @@ const search = async (req, res, next) => {
     if (!q) {
       throw new AppError('Le paramètre de recherche q est requis', 400);
     }
-    const results = await service.search(q);
+    const results = await service.search(q, req.query.version);
     return res.status(200).json({ success: true, data: { results } });
   } catch (error) {
     next(error);
   }
 };
 
-module.exports = { listBooks, getChapter, search };
+module.exports = { listVersions, listBooks, getChapter, search };

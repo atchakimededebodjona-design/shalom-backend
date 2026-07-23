@@ -13,6 +13,7 @@ const router = Router();
 router.use(authenticate);
 router.use(requireActiveSubscription);
 
+router.get('/versions', controller.listVersions);
 router.get('/books', controller.listBooks);
 router.get('/books/:bookId/chapters/:chapterNumber', getChapterValidator, controller.getChapter);
 router.get('/search', searchValidator, controller.search);

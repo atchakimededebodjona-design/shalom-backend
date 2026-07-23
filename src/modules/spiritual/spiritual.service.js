@@ -275,7 +275,16 @@ const dayOfYearOf = (d) => Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86
  * Choix déterministe par jour (même verset pour tout le monde ce jour-là).
  */
 const generateVerseOfTheDayFromBible = async () => {
-  const countRes = await query('SELECT count(*)::int AS n FROM bible_verses');
+  // Verset du jour toujours pris dans la version par défaut : plusieurs
+  // versions coexistent dans bible_verses depuis la migration 021, et on ne
+  // veut pas qu'un même jour donne des versets différents selon le nombre de
+  // versets propre à chaque traduction.
+  const countRes = await query(
+    `SELECT count(*)::int AS n
+     FROM bible_verses v
+     JOIN bible_versions ver ON ver.id = v.version_id
+     WHERE ver.is_default = true`
+  );
   const total = countRes.rows[0].n;
   if (total === 0) return null;
 
@@ -287,6 +296,8 @@ const generateVerseOfTheDayFromBible = async () => {
     `SELECT v.text, v.chapter_number, v.verse_number, b.name AS book_name
      FROM bible_verses v
      JOIN bible_books b ON b.id = v.book_id
+     JOIN bible_versions ver ON ver.id = v.version_id
+     WHERE ver.is_default = true
      ORDER BY b.book_order ASC, v.chapter_number ASC, v.verse_number ASC
      LIMIT 1 OFFSET $1`,
     [offset]

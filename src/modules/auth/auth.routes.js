@@ -3,7 +3,6 @@
 
 const { Router } = require('express');
 const authController = require('./auth.controller');
-const { authLimiter } = require('../../middlewares/rate-limit.middleware');
 const {
   registerSchema,
   loginSchema,
@@ -13,7 +12,8 @@ const {
 const router = Router();
 
 // --- Routes publiques (pas besoin d'authentification) ---
-// Toutes protégées par le rate limiter (10 req / 15 min par IP)
+// Rate limiter désactivé temporairement à la demande de l'utilisateur (dev) —
+// à réactiver avant la mise en production.
 
 /**
  * @swagger
@@ -41,7 +41,7 @@ const router = Router();
  *       409:
  *         description: L'email est déjà utilisé
  */
-router.post('/register', authLimiter, registerSchema, authController.register);
+router.post('/register', registerSchema, authController.register);
 
 /**
  * @swagger
@@ -67,7 +67,7 @@ router.post('/register', authLimiter, registerSchema, authController.register);
  *       401:
  *         description: Identifiants invalides
  */
-router.post('/login', authLimiter, loginSchema, authController.login);
+router.post('/login', loginSchema, authController.login);
 
 /**
  * @swagger
@@ -91,6 +91,6 @@ router.post('/login', authLimiter, loginSchema, authController.login);
  *       401:
  *         description: Refresh token invalide ou expiré
  */
-router.post('/refresh', authLimiter, refreshSchema, authController.refresh);
+router.post('/refresh', refreshSchema, authController.refresh);
 
 module.exports = router;

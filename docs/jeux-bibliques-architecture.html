@@ -1,0 +1,1233 @@
+<title>Jeux Bibliques — Document d'architecture · SHALOM</title>
+<style>
+  :root{
+    --bg:#F5F6F3;
+    --surface:#FFFFFF;
+    --surface-2:#EEF0EB;
+    --ink:#1C2321;
+    --ink-muted:#5B655F;
+    --ink-faint:#8B948E;
+    --border:#DEE3DA;
+    --accent:#2F5D50;
+    --accent-strong:#1E4438;
+    --accent-tint:#E4EDE8;
+    --gold:#96742C;
+    --gold-tint:#F3ECDA;
+    --good:#3C7A5B;
+    --warn:#9C6B22;
+    --critical:#A6432F;
+    --code-bg:#EEF1EA;
+    --shadow: 0 1px 2px rgba(28,35,33,0.06), 0 8px 24px -12px rgba(28,35,33,0.12);
+    --serif: Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, "Liberation Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#12161A;
+      --surface:#171C20;
+      --surface-2:#1D2328;
+      --ink:#E7EAE6;
+      --ink-muted:#9AA59D;
+      --ink-faint:#6C766F;
+      --border:#2A3238;
+      --accent:#7DA593;
+      --accent-strong:#9EC1B1;
+      --accent-tint:#1B2822;
+      --gold:#D3B36C;
+      --gold-tint:#2A2416;
+      --good:#6FAE8C;
+      --warn:#D9A85D;
+      --critical:#E08670;
+      --code-bg:#1B2126;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px -12px rgba(0,0,0,0.5);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#12161A; --surface:#171C20; --surface-2:#1D2328; --ink:#E7EAE6; --ink-muted:#9AA59D; --ink-faint:#6C766F;
+    --border:#2A3238; --accent:#7DA593; --accent-strong:#9EC1B1; --accent-tint:#1B2822;
+    --gold:#D3B36C; --gold-tint:#2A2416; --good:#6FAE8C; --warn:#D9A85D; --critical:#E08670;
+    --code-bg:#1B2126; --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px -12px rgba(0,0,0,0.5);
+  }
+  :root[data-theme="light"]{
+    --bg:#F5F6F3; --surface:#FFFFFF; --surface-2:#EEF0EB; --ink:#1C2321; --ink-muted:#5B655F; --ink-faint:#8B948E;
+    --border:#DEE3DA; --accent:#2F5D50; --accent-strong:#1E4438; --accent-tint:#E4EDE8;
+    --gold:#96742C; --gold-tint:#F3ECDA; --good:#3C7A5B; --warn:#9C6B22; --critical:#A6432F;
+    --code-bg:#EEF1EA; --shadow: 0 1px 2px rgba(28,35,33,0.06), 0 8px 24px -12px rgba(28,35,33,0.12);
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--sans);
+    font-size:16px;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{background:var(--accent-tint);color:var(--accent-strong);}
+
+  a{color:var(--accent-strong);text-decoration-color:var(--border);text-underline-offset:2px;}
+  a:hover{text-decoration-color:currentColor;}
+  a:focus-visible, button:focus-visible, summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px;}
+
+  .shell{
+    max-width:1180px;
+    margin:0 auto;
+    padding:0 24px 96px;
+    display:grid;
+    grid-template-columns:248px minmax(0,1fr);
+    gap:56px;
+  }
+  @media (max-width:920px){
+    .shell{grid-template-columns:1fr;}
+    .toc-rail{position:static !important;order:2;}
+  }
+
+  /* ---------- Masthead ---------- */
+  .masthead{
+    grid-column:1/-1;
+    padding:56px 0 36px;
+    border-bottom:1px solid var(--border);
+  }
+  .kicker{
+    font-family:var(--mono);
+    font-size:12px;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    color:var(--accent-strong);
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .kicker::before{content:"";width:18px;height:1px;background:var(--accent);display:inline-block;}
+  h1.title{
+    font-family:var(--serif);
+    font-weight:400;
+    font-size:clamp(32px,4.4vw,50px);
+    line-height:1.08;
+    margin:14px 0 10px;
+    text-wrap:balance;
+    color:var(--ink);
+  }
+  .subtitle{
+    font-size:17px;
+    color:var(--ink-muted);
+    max-width:640px;
+    margin:0 0 22px;
+    text-wrap:pretty;
+  }
+  .meta-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px 8px;
+    align-items:center;
+  }
+  .tag{
+    font-family:var(--mono);
+    font-size:11.5px;
+    letter-spacing:.02em;
+    padding:4px 9px;
+    border-radius:5px;
+    background:var(--surface-2);
+    color:var(--ink-muted);
+    border:1px solid var(--border);
+    white-space:nowrap;
+  }
+  .tag.accent{background:var(--accent-tint);color:var(--accent-strong);border-color:transparent;}
+
+  /* ---------- TOC rail ---------- */
+  .toc-rail{
+    position:sticky;
+    top:32px;
+    align-self:start;
+    padding-top:44px;
+  }
+  .toc-label{
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:var(--ink-faint);
+    margin:0 0 12px;
+  }
+  .toc-rail ol{
+    list-style:none;margin:0;padding:0;
+    border-left:1px solid var(--border);
+  }
+  .toc-rail li{margin:0;}
+  .toc-rail a{
+    display:block;
+    padding:6px 0 6px 16px;
+    margin-left:-1px;
+    border-left:1px solid transparent;
+    font-size:13.5px;
+    color:var(--ink-muted);
+    text-decoration:none;
+  }
+  .toc-rail a:hover{color:var(--ink);border-left-color:var(--ink-faint);}
+  .toc-rail a .n{
+    font-family:var(--mono);
+    color:var(--ink-faint);
+    margin-right:8px;
+  }
+
+  /* ---------- Main content ---------- */
+  main{padding-top:44px;min-width:0;}
+
+  .brief{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:22px 24px;
+    margin-bottom:52px;
+    box-shadow:var(--shadow);
+  }
+  .brief h2{
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:var(--ink-faint);
+    margin:0 0 14px;
+    font-weight:600;
+  }
+  .brief ul{margin:0;padding:0;list-style:none;display:grid;gap:10px;}
+  .brief li{
+    display:flex;gap:10px;font-size:14.5px;color:var(--ink);
+    padding-left:0;
+  }
+  .brief li::before{
+    content:"—";color:var(--accent);flex:none;
+  }
+
+  section.doc-section{
+    padding-top:8px;
+    margin-bottom:64px;
+    scroll-margin-top:24px;
+  }
+  .sec-eyebrow{
+    display:flex;align-items:baseline;gap:12px;margin-bottom:6px;
+  }
+  .sec-num{
+    font-family:var(--mono);
+    color:var(--accent);
+    font-size:13px;
+  }
+  .sec-hr{flex:1;height:1px;background:var(--border);}
+  h2.sec-title{
+    font-family:var(--serif);
+    font-weight:400;
+    font-size:28px;
+    margin:0 0 18px;
+    color:var(--ink);
+    text-wrap:balance;
+  }
+  h3.sub-title{
+    font-family:var(--serif);
+    font-weight:400;
+    font-size:19px;
+    margin:34px 0 12px;
+    color:var(--ink);
+  }
+  h4.micro-title{
+    font-family:var(--mono);
+    font-size:12px;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    color:var(--accent-strong);
+    margin:26px 0 10px;
+  }
+  p{margin:0 0 14px;max-width:70ch;color:var(--ink);}
+  .lede{font-size:16.5px;color:var(--ink-muted);max-width:66ch;}
+  strong{color:var(--ink);font-weight:600;}
+  code{
+    font-family:var(--mono);
+    font-size:.88em;
+    background:var(--code-bg);
+    padding:.12em .38em;
+    border-radius:4px;
+    color:var(--accent-strong);
+  }
+
+  ul.plain, ol.plain{margin:0 0 14px;padding-left:20px;}
+  ul.plain li, ol.plain li{margin-bottom:6px;max-width:66ch;}
+
+  /* ---------- Tables ---------- */
+  .table-wrap{overflow-x:auto;margin:0 0 20px;border:1px solid var(--border);border-radius:10px;}
+  table{width:100%;border-collapse:collapse;font-size:13.8px;min-width:560px;}
+  thead th{
+    text-align:left;
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    color:var(--ink-faint);
+    background:var(--surface-2);
+    padding:10px 14px;
+    border-bottom:1px solid var(--border);
+    white-space:nowrap;
+  }
+  tbody td{
+    padding:11px 14px;
+    border-bottom:1px solid var(--border);
+    vertical-align:top;
+    color:var(--ink);
+  }
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:var(--surface-2);}
+  td code, th code{white-space:nowrap;}
+  td.mono, .mono-cell{font-family:var(--mono);font-size:12.6px;color:var(--ink-muted);}
+
+  /* ---------- Folder tree ---------- */
+  .tree{
+    font-family:var(--mono);
+    font-size:12.8px;
+    line-height:1.72;
+    background:var(--code-bg);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:18px 20px;
+    overflow-x:auto;
+    white-space:pre;
+    color:var(--ink);
+  }
+  .tree .c{color:var(--ink-faint);}
+  .tree .k{color:var(--accent-strong);}
+  .tree .g{color:var(--gold);}
+
+  /* ---------- DB table cards ---------- */
+  .db-grid{display:grid;gap:14px;margin-bottom:8px;}
+  .db-card{
+    border:1px solid var(--border);
+    border-radius:10px;
+    background:var(--surface);
+    padding:16px 18px;
+  }
+  .db-card-head{
+    display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;
+    margin-bottom:4px;
+  }
+  .db-name{font-family:var(--mono);font-size:14.5px;color:var(--accent-strong);font-weight:600;}
+  .db-purpose{font-size:13px;color:var(--ink-muted);margin:0 0 12px;}
+  .db-cols{
+    font-family:var(--mono);font-size:12.4px;line-height:1.85;
+    background:var(--code-bg);border-radius:6px;padding:10px 12px;overflow-x:auto;white-space:pre;margin-bottom:10px;
+  }
+  .db-meta{display:grid;gap:5px;font-size:12.8px;}
+  .db-meta div{display:flex;gap:8px;}
+  .db-meta b{
+    font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--ink-faint);min-width:76px;flex:none;padding-top:1px;
+  }
+  .db-meta span{color:var(--ink-muted);}
+  .rls{display:inline-flex;align-items:center;gap:6px;}
+  .dot{width:6px;height:6px;border-radius:50%;flex:none;}
+  .dot.open{background:var(--good);}
+  .dot.restricted{background:var(--warn);}
+  .dot.locked{background:var(--critical);}
+
+  /* ---------- callouts ---------- */
+  .callout{
+    border-left:3px solid var(--accent);
+    background:var(--accent-tint);
+    border-radius:0 8px 8px 0;
+    padding:14px 18px;
+    margin:18px 0 22px;
+    font-size:14px;
+    color:var(--ink);
+  }
+  .callout p{margin:0;max-width:64ch;}
+  .callout.gold{border-left-color:var(--gold);background:var(--gold-tint);}
+
+  /* mermaid */
+  .diagram-wrap{
+    border:1px solid var(--border);border-radius:10px;background:var(--surface);
+    padding:18px;margin:8px 0 24px;overflow-x:auto;
+  }
+  .diagram-caption{font-size:12.5px;color:var(--ink-faint);margin-top:8px;font-family:var(--mono);}
+
+  /* pill badges for tech / patterns */
+  .pill-row{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 18px;}
+  .pill{
+    font-size:12.5px;padding:5px 11px;border-radius:999px;border:1px solid var(--border);
+    color:var(--ink-muted);background:var(--surface);
+  }
+
+  footer{
+    grid-column:1/-1;
+    border-top:1px solid var(--border);
+    margin-top:32px;padding-top:24px;
+    font-size:12.5px;color:var(--ink-faint);
+    display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;
+  }
+
+  @media (prefers-reduced-motion: reduce){*{scroll-behavior:auto !important;}}
+  html{scroll-behavior:smooth;}
+</style>
+
+<div class="shell">
+
+  <header class="masthead">
+    <div class="kicker">Document d'architecture logicielle</div>
+    <h1 class="title">Le module Jeux Bibliques de SHALOM</h1>
+    <p class="subtitle">Fondations techniques pour un module de gamification biblique conçu comme un plug-in autonome : chaque nouveau jeu s'ajoute par extension, jamais par modification du socle existant.</p>
+    <div class="meta-row">
+      <span class="tag accent">Clean Architecture</span>
+      <span class="tag accent">Modular · Feature-First</span>
+      <span class="tag">Expo Router</span>
+      <span class="tag">TypeScript</span>
+      <span class="tag">Supabase</span>
+      <span class="tag">React Query</span>
+      <span class="tag">Zustand</span>
+      <span class="tag">Zod</span>
+      <span class="tag">Reanimated</span>
+      <span class="tag">v1.0 — 2026-07-23</span>
+    </div>
+  </header>
+
+  <nav class="toc-rail" aria-label="Sommaire">
+    <p class="toc-label">Sommaire</p>
+    <ol>
+      <li><a href="#s01"><span class="n">01</span>Vision globale</a></li>
+      <li><a href="#s02"><span class="n">02</span>Architecture proposée</a></li>
+      <li><a href="#s03"><span class="n">03</span>Arborescence des dossiers</a></li>
+      <li><a href="#s04"><span class="n">04</span>Responsabilités des dossiers</a></li>
+      <li><a href="#s05"><span class="n">05</span>Modèles de données</a></li>
+      <li><a href="#s06"><span class="n">06</span>Services</a></li>
+      <li><a href="#s07"><span class="n">07</span>Repositories</a></li>
+      <li><a href="#s08"><span class="n">08</span>Composants UI</a></li>
+      <li><a href="#s09"><span class="n">09</span>Navigation</a></li>
+      <li><a href="#s10"><span class="n">10</span>Stores Zustand</a></li>
+      <li><a href="#s11"><span class="n">11</span>Schéma Supabase</a></li>
+      <li><a href="#s12"><span class="n">12</span>Flux de données</a></li>
+      <li><a href="#s13"><span class="n">13</span>Recommandations techniques</a></li>
+      <li><a href="#s14"><span class="n">14</span>Bonnes pratiques</a></li>
+      <li><a href="#s15"><span class="n">15</span>Évolutions futures</a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+    <div class="brief">
+      <h2>En un coup d'œil</h2>
+      <ul>
+        <li><strong>Un jeu = un plug-in.</strong> Chaque jeu implémente <code>IGameModule</code> et s'enregistre dans un <code>GameRegistry</code> — l'accueil, la navigation et le kernel n'ont jamais besoin d'être modifiés pour accueillir un nouveau jeu.</li>
+        <li><strong>Une seule porte de sortie.</strong> Le reste de SHALOM (portefeuille, SaaS, communauté) n'importe jamais l'intérieur du module : uniquement <code>features/bible-games/index.ts</code>, son API publique.</li>
+        <li><strong>Le score ne se calcule jamais sur l'appareil.</strong> Les gains d'XP et la validation des réponses passent par des fonctions Postgres <code>security definer</code> — impossible de tricher en modifiant le client.</li>
+        <li><strong>Domaine pur, dépendances aux bords.</strong> Les entités et règles métier ne connaissent ni React Native, ni Supabase — seules les couches data/presentation en dépendent, ce qui rend le domaine testable et portable.</li>
+      </ul>
+    </div>
+
+    <!-- 01 -->
+    <section class="doc-section" id="s01">
+      <div class="sec-eyebrow"><span class="sec-num">01</span><div class="sec-hr"></div></div>
+      <h2 class="sec-title">Vision globale du module</h2>
+      <p class="lede">Jeux Bibliques est une fonctionnalité de gamification biblique — quiz, devinettes, associations, défis quotidiens — assise sur un système commun de progression (XP, niveaux, badges, classement). Son exigence structurante n'est pas fonctionnelle mais organisationnelle : <strong>elle doit pouvoir grandir, être testée, débranchée ou remplacée sans jamais toucher au reste de l'application</strong>.</p>
+
+      <p>Trois idées gouvernent toutes les décisions qui suivent :</p>
+      <ol class="plain">
+        <li><strong>Indépendance totale.</strong> Le module ne dépend que d'un socle partagé très restreint (client Supabase, design system, auth, i18n). Il n'importe jamais de code des features portefeuille/SaaS/communauté, et n'est jamais importé par elles au-delà de son point d'entrée public.</li>
+        <li><strong>Extensibilité par ajout, jamais par modification.</strong> Le catalogue de jeux prévu (Quiz, Qui suis-je, Verset Caché, Mots Mêlés, Associer, futur Mode Aventure) n'est pas une liste figée mais une preuve que l'architecture doit accueillir un jeu n+1 sans toucher au code des jeux 1…n. C'est le critère de réussite de ce document.</li>
+        <li><strong>La progression est transverse, pas dupliquée.</strong> XP, niveaux, badges, streak, classement et statistiques ne sont pas la propriété d'un jeu : ce sont des concepts du <em>kernel</em> du module, consommés par tous les jeux via les mêmes ports.</li>
+      </ol>
+
+      <div class="callout">
+        <p>Concrètement : livrer un sixième jeu doit être un travail d'implémentation dans un nouveau dossier <code>games/&lt;nouveau-jeu&gt;/</code> plus une ligne d'enregistrement dans le registry — jamais un chantier de refactorisation transverse.</p>
+      </div>
+    </section>
+
+    <!-- 02 -->
+    <section class="doc-section" id="s02">
+      <div class="sec-eyebrow"><span class="sec-num">02</span><div class="sec-hr"></div></div>
+      <h2 class="sec-title">Architecture proposée</h2>
+      <p class="lede">Une combinaison de trois styles qui se complètent à des échelles différentes : Feature-First au niveau de l'application, Clean Architecture au niveau du module, et un pattern <strong>Plugin</strong> au niveau de chaque jeu.</p>
+
+      <h3 class="sub-title">Les quatre couches, par module</h3>
+      <p>Chaque brique du module (le kernel, comme chaque jeu individuel) est traversée par les mêmes quatre couches, avec une règle de dépendance à sens unique : la <strong>presentation</strong> dépend du <strong>domain</strong>, la <strong>data</strong> implémente le <strong>domain</strong>, jamais l'inverse.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Couche</th><th>Contenu</th><th>Dépend de</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Domain</strong></td><td>Entités, value objects, énumérations, ports (interfaces repository/service), use-cases</td><td class="mono-cell">rien (TypeScript pur)</td></tr>
+            <tr><td><strong>Data</strong></td><td>Implémentations des repositories, datasources Supabase, mappers DTO ↔ entité, cache</td><td class="mono-cell">Domain</td></tr>
+            <tr><td><strong>Presentation</strong></td><td>Écrans, composants, hooks React Query, view-models, stores Zustand locaux</td><td class="mono-cell">Domain (jamais Data directement)</td></tr>
+            <tr><td><strong>Infrastructure</strong></td><td>Services transverses : audio, animation, notifications, analytics</td><td class="mono-cell">Domain (via ports)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="sub-title">Le pattern Plugin de jeu</h3>
+      <p>Chaque jeu implémente une interface commune <code>IGameModule</code> (métadonnées, écran d'entrée, moteur de scoring, use-cases) et s'enregistre dans un <code>GameRegistry</code> lu par l'écran d'accueil et le router. Ajouter un jeu = ajouter une implémentation ; retirer un jeu = retirer une ligne d'enregistrement. C'est l'application directe du principe Ouvert/Fermé (SOLID) au niveau produit.</p>
+
+      <div class="diagram-wrap">
+<pre class="mermaid">
+flowchart TB
+  subgraph SHALOM["Application SHALOM"]
+    Wallet["Portefeuille"]
+    SaaS["SaaS"]
+    Community["Communauté"]
+    Kernel["Socle partagé — design system, auth, client Supabase, i18n"]
+  end
+
+  subgraph BG["Module Jeux Bibliques — features/bible-games"]
+    API["index.ts — API publique du module"]
+    Registry["GameRegistry"]
+    Core["Kernel du module — Player, XP, Badges, Levels, Streak"]
+    Quiz["Jeu — Quiz Biblique"]
+    WhoAmI["Jeu — Qui suis-je ?"]
+    Hidden["Jeu — Verset Caché"]
+    Scramble["Jeu — Mots Mêlés"]
+    Match["Jeu — Associer"]
+    Adventure["Jeu — Mode Aventure (futur)"]
+  end
+
+  Wallet -.aucun import.-x BG
+  SaaS -.aucun import.-x BG
+  Community -.aucun import.-x BG
+  Kernel --> API
+  API --> Registry
+  Registry --> Quiz & WhoAmI & Hidden & Scramble & Match & Adventure
+  Quiz --> Core
+  WhoAmI --> Core
+  Hidden --> Core
+  Scramble --> Core
+  Match --> Core
+  Adventure --> Core
+</pre>
+      </div>
+      <p class="diagram-caption">Frontière du module : une seule porte d'entrée (index.ts), un seul socle commun (kernel), des jeux qui s'ignorent entre eux.</p>
+
+      <h3 class="sub-title">Principes directeurs</h3>
+      <div class="pill-row">
+        <span class="pill">SRP — un service, une responsabilité</span>
+        <span class="pill">OCP — extension par le registry</span>
+        <span class="pill">LSP — tout IGameModule est interchangeable</span>
+        <span class="pill">ISP — ports fins par domaine</span>
+        <span class="pill">DIP — services dépendent d'interfaces</span>
+        <span class="pill">DRY raisonné</span>
+        <span class="pill">KISS</span>
+      </div>
+    </section>
+
+    <!-- 03 -->
+    <section class="doc-section" id="s03">
+      <div class="sec-eyebrow"><span class="sec-num">03</span><div class="sec-hr"></div></div>
+      <h2 class="sec-title">Arborescence complète des dossiers</h2>
+      <p class="lede">Structure Feature-First : le module vit entièrement sous <code>src/features/bible-games/</code>, avec des routes fines sous <code>src/app/bible-games/</code> qui ne font que déclarer la navigation et déléguer à la presentation layer.</p>
+
+<div class="tree"><span class="c">src/</span>
+├── <span class="k">app/</span>                                   <span class="c">// Expo Router — routage uniquement, zéro logique</span>
+│   └── <span class="k">bible-games/</span>
+│       ├── _layout.tsx
+│       ├── index.tsx                        <span class="c">// Accueil Jeux Bibliques</span>
+│       ├── <span class="k">quiz/</span>
+│       │   ├── index.tsx                    <span class="c">// sélection catégorie / difficulté</span>
+│       │   ├── [sessionId].tsx               <span class="c">// partie en cours</span>
+│       │   └── result/[sessionId].tsx
+│       ├── <span class="k">who-am-i/</span>            (index.tsx, [sessionId].tsx, result/[sessionId].tsx)
+│       ├── <span class="k">hidden-verse/</span>        (index.tsx, [sessionId].tsx, result/[sessionId].tsx)
+│       ├── <span class="k">word-scramble/</span>       (index.tsx, [sessionId].tsx, result/[sessionId].tsx)
+│       ├── <span class="k">match-pairs/</span>         (index.tsx, [sessionId].tsx, result/[sessionId].tsx)
+│       ├── <span class="k">daily-challenge/</span>index.tsx
+│       ├── <span class="k">leaderboard/</span>index.tsx
+│       ├── <span class="k">badges/</span>index.tsx
+│       ├── <span class="k">profile/</span>index.tsx
+│       ├── <span class="k">history/</span>index.tsx
+│       ├── <span class="k">stats/</span>index.tsx
+│       ├── <span class="k">settings/</span>index.tsx
+│       └── <span class="k">adventure/</span>              <span class="c">// futur — masqué par feature flag</span>
+│
+├── <span class="k">features/bible-games/</span>              <span class="c">// ⟵ le module, autonome</span>
+│   ├── index.ts                             <span class="g">// API PUBLIQUE — seul point d'accès externe</span>
+│   │
+│   ├── <span class="k">core/</span>                             <span class="c">// kernel du module — partagé par tous les jeux</span>
+│   │   ├── <span class="k">domain/</span>
+│   │   │   ├── entities/          <span class="c">// Player, XPTransaction, Level, Badge…</span>
+│   │   │   ├── value-objects/     <span class="c">// XPAmount, Score, StreakCounter, BibleReference</span>
+│   │   │   ├── enums/             <span class="c">// Difficulty, GameCategory, RewardType</span>
+│   │   │   ├── ports/             <span class="c">// IPlayerRepository, IXPRepository, IBadgeService…</span>
+│   │   │   └── use-cases/         <span class="c">// awardXP, evaluateBadges, computeStreak…</span>
+│   │   ├── <span class="k">data/</span>
+│   │   │   ├── datasources/       <span class="c">// bible-games.supabase.ts</span>
+│   │   │   ├── mappers/
+│   │   │   └── repositories/      <span class="c">// implémentations Supabase des ports ci-dessus</span>
+│   │   ├── <span class="k">presentation/</span>
+│   │   │   ├── stores/            <span class="c">// usePlayerStore, useBadgesStore…</span>
+│   │   │   ├── hooks/             <span class="c">// usePlayer, useAwardXP, useBadgeQueue…</span>
+│   │   │   └── components/        <span class="c">// XPBar, BadgeCard, LevelBadge, RewardAnimation…</span>
+│   │   └── <span class="k">game-registry/</span>
+│   │       ├── IGameModule.ts     <span class="c">// contrat que chaque jeu doit respecter</span>
+│   │       ├── GameRegistry.ts    <span class="c">// enregistrement / résolution des jeux</span>
+│   │       └── gameManifest.ts    <span class="c">// liste des jeux actifs (feature-flaggée)</span>
+│   │
+│   ├── <span class="k">games/</span>                            <span class="c">// un dossier isolé par jeu — jamais d'import inter-jeux</span>
+│   │   ├── <span class="k">quiz/</span>
+│   │   │   ├── domain/            <span class="c">// Question, AnswerOption, use-cases de scoring</span>
+│   │   │   ├── data/               <span class="c">// QuestionRepository (impl. Supabase)</span>
+│   │   │   ├── presentation/      <span class="c">// écrans + composants propres au Quiz</span>
+│   │   │   └── index.ts           <span class="c">// enregistre le module dans le GameRegistry</span>
+│   │   ├── <span class="k">who-am-i/</span>          (même structure — réutilise Question/AnswerOption du kernel)
+│   │   ├── <span class="k">hidden-verse/</span>      (domain: Verse · use-case: revealHint)
+│   │   ├── <span class="k">word-scramble/</span>     (domain: WordPuzzle)
+│   │   ├── <span class="k">match-pairs/</span>       (domain: MatchPair)
+│   │   └── <span class="k">adventure/</span>            <span class="c">// futur — même structure, désactivé par défaut</span>
+│   │
+│   ├── <span class="k">gamification/</span>                     <span class="c">// XP / niveaux / badges / récompenses / streak</span>
+│   │   ├── <span class="k">xp/</span>  <span class="k">badges/</span>  <span class="k">levels/</span>  <span class="k">rewards/</span>  <span class="k">streak/</span>
+│   │
+│   ├── <span class="k">social/</span>
+│   │   ├── <span class="k">leaderboard/</span>
+│   │   └── <span class="k">challenges-friends/</span>          <span class="c">// futur</span>
+│   │
+│   ├── <span class="k">daily-challenge/</span>
+│   ├── <span class="k">stats/</span>
+│   ├── <span class="k">player-profile/</span>
+│   │
+│   └── <span class="k">shared/</span>                           <span class="c">// partagé ENTRE JEUX uniquement, jamais hors module</span>
+│       ├── components/            <span class="c">// GameCard, GameHeader, QuestionCard, Countdown…</span>
+│       ├── hooks/
+│       ├── constants/
+│       ├── types/                 <span class="c">// Result&lt;T,E&gt;, PaginatedResponse&lt;T&gt;…</span>
+│       └── theme/                 <span class="c">// tokens visuels propres aux jeux (couleurs par catégorie)</span>
+│
+└── <span class="k">shared/</span>                                  <span class="c">// kernel GLOBAL de l'app (hors périmètre de ce document)</span>
+    ├── supabase/ (client.ts, types.ts généré)
+    ├── services/ (auth, storage, analytics, notifications globaux)
+    ├── components/ (design system SHALOM)
+    ├── hooks/ · stores/ (session utilisateur) · utils/ · i18n/
+</div>
+
+      <div class="callout gold">
+        <p><strong>Règle de frontière :</strong> tout import venant de l'extérieur du module passe par <code>features/bible-games/index.ts</code>. Un linter de boundaries (§13) fait respecter cette règle en continu, pas seulement en revue de code.</p>
+      </div>
+    </section>
+
+    <!-- 04 -->
+    <section class="doc-section" id="s04">
+      <div class="sec-eyebrow"><span class="sec-num">04</span><div class="sec-hr"></div></div>
+      <h2 class="sec-title">Responsabilités de chaque dossier</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Dossier</th><th>Responsabilité</th></tr></thead>
+          <tbody>
+            <tr><td class="mono-cell">app/bible-games/</td><td>Déclare les routes Expo Router et le layout de navigation. Ne contient aucune règle métier : chaque écran importe un composant de page depuis <code>features/bible-games/.../presentation</code>.</td></tr>
+            <tr><td class="mono-cell">core/domain/</td><td>Vérité métier partagée : ce qu'est un joueur, un badge, un niveau — indépendant de toute technologie. Testable sans mock.</td></tr>
+            <tr><td class="mono-cell">core/data/</td><td>Traduit les entités du domaine vers/depuis Supabase. Seul endroit du kernel qui « sait » que la persistance est Supabase.</td></tr>
+            <tr><td class="mono-cell">core/presentation/</td><td>Hooks et stores exposant l'état joueur/XP/badges à n'importe quel jeu, sans qu'un jeu ait besoin de connaître Supabase.</td></tr>
+            <tr><td class="mono-cell">core/game-registry/</td><td>Le point d'articulation de toute l'extensibilité : contrat <code>IGameModule</code>, table d'enregistrement, résolution dynamique par id.</td></tr>
+            <tr><td class="mono-cell">games/&lt;jeu&gt;/</td><td>Un jeu = un sous-module Clean Architecture complet, autonome, qui ne référence jamais un autre dossier de <code>games/</code>.</td></tr>
+            <tr><td class="mono-cell">gamification/</td><td>Sous-domaines transverses (XP, badges, niveaux, récompenses, streak) suffisamment volumineux pour mériter leur propre dossier plutôt que de tout entasser dans <code>core</code>.</td></tr>
+            <tr><td class="mono-cell">social/leaderboard/</td><td>Classements et — plus tard — défis entre amis, ligues.</td></tr>
+            <tr><td class="mono-cell">shared/</td><td>Composants et utilitaires réutilisés par ≥2 jeux uniquement. Seuil volontairement strict pour éviter l'abstraction prématurée (KISS).</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 05 -->
+    <section class="doc-section" id="s05">
+      <div class="sec-eyebrow"><span class="sec-num">05</span><div class="sec-hr"></div></div>
+      <h2 class="sec-title">Modèles de données</h2>
+      <p class="lede">Entités du domaine. Aucun code ici — uniquement la responsabilité de chaque modèle et son positionnement (kernel vs jeu spécifique).</p>
+
+      <h3 class="sub-title">Kernel — joueur &amp; progression</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Entité</th><th>Responsabilité</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Player</strong></td><td>Identité du joueur dans le module (liée à <code>auth.users</code>) : XP total, niveau courant, streak, monnaie interne, préférences de jeu.</td></tr>
+            <tr><td><strong>XPTransaction</strong></td><td>Trace immuable d'un gain/perte d'XP (source, montant, session liée, horodatage) — base de l'anti-triche et de l'audit.</td></tr>
+            <tr><td><strong>Level</strong></td><td>Palier statique : seuil d'XP, titre affiché, récompense de passage de niveau.</td></tr>
+            <tr><td><strong>Badge</strong></td><td>Définition d'un badge : critère d'obtention, rareté, icône, catégorie.</td></tr>
+            <tr><td><strong>PlayerBadge</strong></td><td>Jonction joueur ↔ badge obtenu, avec date d'obtention.</td></tr>
+            <tr><td><strong>Achievement</strong></td><td>Succès à progression cumulative dans le temps (distinct du badge, ponctuel), ex. « 100 parties jouées ».</td></tr>
+            <tr><td><strong>Reward</strong></td><td>Récompense générique attribuable (coins, badge, titre, cosmétique), avec expiration optionnelle pour les récompenses temporaires.</td></tr>
+            <tr><td><strong>StreakCounter</strong> <em>(VO)</em></td><td>Série de jours consécutifs joués et date de dernière activité comptabilisée.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="sub-title">Kernel — cycle de jeu</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Entité</th><th>Responsabilité</th></tr></thead>
+          <tbody>
+            <tr><td><strong>GameDefinition</strong></td><td>Métadonnées d'un jeu (id, nom, icône, catégorie, actif/inactif, version) — alimente dynamiquement l'écran d'accueil via le registry.</td></tr>
+            <tr><td><strong>GameSession</strong></td><td>Une partie jouée : jeu concerné, joueur, statut, score final, horodatages de début/fin, mode (normal / défi quotidien).</td></tr>
+            <tr><td><strong>GameSessionAnswer</strong></td><td>Réponse individuelle donnée pendant une session (question, réponse choisie, correcte/incorrecte, temps de réponse).</td></tr>
+            <tr><td><strong>Category</strong></td><td>Thème biblique transverse (Ancien Testament, Personnages, Paraboles…), réutilisé par plusieurs jeux.</td></tr>
+            <tr><td><strong>Difficulty</strong> <em>(enum)</em></td><td>Facile / Moyen / Difficile / Expert — pondère le calcul d'XP.</td></tr>
+            <tr><td><strong>Score</strong> <em>(VO)</em></td><td>Encapsule la valeur du score et sa formule d'agrégation, évite la primitive obsession sur un simple <code>number</code>.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="sub-title">Spécifiques à un jeu</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Entité</th><th>Jeu</th><th>Responsabilité</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Question</strong></td><td>Quiz · Qui suis-je</td><td>Texte, catégorie, difficulté, référence biblique, type de question.</td></tr>
+            <tr><td><strong>AnswerOption</strong></td><td>Quiz · Qui suis-je</td><td>Proposition liée à une question, indicateur de validité.</td></tr>
+            <tr><td><strong>Verse</strong></td><td>Verset Caché</td><td>Référence, texte complet, texte à trous, mots masqués et indices.</td></tr>
+            <tr><td><strong>WordPuzzle</strong></td><td>Mots Mêlés</td><td>Mot cible, grille de lettres mélangées, indices associés.</td></tr>
+            <tr><td><strong>MatchPair</strong></td><td>Associer</td><td>Paire élément gauche / élément droit, catégorie de l'association.</td></tr>
+            <tr><td><strong>AdventureProgress</strong></td><td>Aventure <em>(futur)</em></td><td>Chapitre courant, checkpoints franchis, contenus débloqués.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="sub-title">Transverses — défis, classement, statistiques</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Entité</th><th>Responsabilité</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Challenge / DailyChallenge</strong></td><td>Défi du jour : jeu concerné, configuration, date, récompense bonus.</td></tr>
+            <tr><td><strong>ChallengeCompletion</strong></td><td>Trace la complétion d'un défi par un joueur, avec le score obtenu.</td></tr>
+            <tr><td><strong>LeaderboardEntry</strong></td><td>Entrée calculée d'un classement pour une période donnée (jour/semaine/mois/all-time).</td></tr>
+            <tr><td><strong>PlayerStatistics</strong></td><td>Agrégats d'un joueur : parties jouées, taux de réussite, meilleure série, temps moyen — par jeu et globalement.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 06 -->
+    <section class="doc-section" id="s06">
+      <div class="sec-eyebrow"><span class="sec-num">06</span><div class="sec-hr"></div></div>
+      <h2 class="sec-title">Services</h2>
+      <p class="lede">Les services orchestrent les règles métier en consommant des <em>ports</em> (interfaces repository) injectés — ils ne connaissent jamais Supabase directement, ce qui les rend testables en isolation.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Service</th><th>Rôle</th></tr></thead>
+          <tbody>
+            <tr><td><strong>GameRegistryService</strong></td><td>Enregistre/désenregistre dynamiquement les modules de jeu, résout un <code>IGameModule</code> par id pour le router et l'accueil.</td></tr>
+            <tr><td><strong>GameSessionService</strong></td><td>Orchestre le cycle de vie d'une partie (démarrage, soumission, fin) et délègue le calcul du score au moteur du jeu concerné.</td></tr>
+            <tr><td><strong>ScoringService</strong></td><td>Stratégie de calcul de score/XP injectée par jeu (pattern Strategy) — chaque jeu fournit sa propre implémentation.</td></tr>
+            <tr><td><strong>XPService</strong></td><td>Applique les gains d'XP, détecte les changements de niveau, émet les événements de level-up.</td></tr>
+            <tr><td><strong>LevelService</strong></td><td>Résout le niveau courant à partir de l'XP total, expose le seuil suivant et la progression restante.</td></tr>
+            <tr><td><strong>BadgeService</strong></td><td>Évalue les critères d'obtention après un événement (fin de partie, streak atteint) et attribue les badges.</td></tr>
+            <tr><td><strong>RewardService</strong></td><td>Distribue les récompenses (coins, badges) de façon idempotente pour éviter les doubles attributions.</td></tr>
+            <tr><td><strong>StreakService</strong></td><td>Calcule et maintient la série de jours consécutifs, gère la remise à zéro en cas d'inactivité.</td></tr>
+            <tr><td><strong>ChallengeService</strong></td><td>Sélectionne/génère le défi du jour, vérifie l'éligibilité et la complétion d'un joueur.</td></tr>
+            <tr><td><strong>LeaderboardService</strong></td><td>Calcule et rafraîchit les classements par période, gère la pagination.</td></tr>
+            <tr><td><strong>StatisticsService</strong></td><td>Agrège les sessions en statistiques exploitables pour le tableau de bord joueur.</td></tr>
+            <tr><td><strong>AdventureService</strong> <em>(futur)</em></td><td>Gère la progression narrative et le déblocage séquentiel des chapitres.</td></tr>
+            <tr><td><strong>AudioService</strong></td><td>Joue sons et musiques via Expo AV, gère volume, mute et préchargement des assets.</td></tr>
+            <tr><td><strong>RewardAnimationOrchestrator</strong></td><td>Coordonne les séquences d'animation (gain d'XP, badge débloqué) avec Reanimated, indépendamment de l'écran qui les déclenche.</td></tr>
+            <tr><td><strong>OfflineSyncService</strong> <em>(évolutivité)</em></td><td>File d'attente d'actions hors-ligne et réconciliation avec le serveur à la reconnexion.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 07 -->
+    <section class="doc-section" id="s07">
+      <div class="sec-eyebrow"><span class="sec-num">07</span><div class="sec-hr"></div></div>
+      <h2 class="sec-title">Repositories</h2>
+      <p class="lede">Chaque repository existe d'abord comme <strong>port</strong> (interface) dans <code>domain/ports</code>, puis comme implémentation Supabase dans <code>data/repositories</code>. Les services ne consomment que le port.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Repository</th><th>Emplacement</th><th>Rôle</th></tr></thead>
+          <tbody>
+            <tr><td class="mono-cell">PlayerRepository</td><td>core</td><td>Lecture/écriture du profil joueur.</td></tr>
+            <tr><td class="mono-cell">XPRepository</td><td>gamification/xp</td><td>Historique des transactions XP.</td></tr>
+            <tr><td class="mono-cell">BadgeRepository</td><td>gamification/badges</td><td>Référentiel de badges et badges obtenus par joueur.</td></tr>
+            <tr><td class="mono-cell">AchievementRepository</td><td>gamification/rewards</td><td>Succès et leur progression cumulative.</td></tr>
+            <tr><td class="mono-cell">GameSessionRepository</td><td>core</td><td>Création et mise à jour des parties jouées.</td></tr>
+            <tr><td class="mono-cell">QuestionRepository</td><td>games/quiz, games/who-am-i</td><td>Questions et propositions de réponse par catégorie/difficulté.</td></tr>
+            <tr><td class="mono-cell">VerseRepository</td><td>games/hidden-verse</td><td>Versets et leur variante à trous.</td></tr>
+            <tr><td class="mono-cell">WordPuzzleRepository</td><td>games/word-scramble</td><td>Grilles de mots mêlés.</td></tr>
+            <tr><td class="mono-cell">MatchPairRepository</td><td>games/match-pairs</td><td>Paires à associer.</td></tr>
+            <tr><td class="mono-cell">ChallengeRepository</td><td>daily-challenge</td><td>Défis du jour et leur complétion.</td></tr>
+            <tr><td class="mono-cell">LeaderboardRepository</td><td>social/leaderboard</td><td>Lecture des classements matérialisés.</td></tr>
+            <tr><td class="mono-cell">StatisticsRepository</td><td>stats</td><td>Agrégats de statistiques joueur.</td></tr>
+            <tr><td class="mono-cell">CategoryRepository</td><td>core</td><td>Référentiel des catégories bibliques.</td></tr>
+            <tr><td class="mono-cell">AdventureRepository</td><td>games/adventure <em>(futur)</em></td><td>Chapitres et progression narrative.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 08 -->
+    <section class="doc-section" id="s08">
+      <div class="sec-eyebrow"><span class="sec-num">08</span><div class="sec-hr"></div></div>
+      <h2 class="sec-title">Composants UI réutilisables</h2>
+
+      <h3 class="sub-title">Kernel — partagés par tous les jeux</h3>
+      <div class="pill-row">
+        <span class="pill">GameCard</span><span class="pill">GameHeader</span><span class="pill">QuestionCard</span>
+        <span class="pill">AnswerButton</span><span class="pill">Countdown</span><span class="pill">ProgressCard</span>
+        <span class="pill">ResultModal</span><span class="pill">XPBar</span><span class="pill">LevelBadge</span>
+        <span class="pill">BadgeCard / BadgeGrid</span><span class="pill">RewardAnimation</span><span class="pill">StreakFlame</span>
+        <span class="pill">PlayerAvatar</span><span class="pill">CategoryCard</span><span class="pill">DifficultySelector</span>
+        <span class="pill">LeaderboardRow</span><span class="pill">ChallengeBanner</span><span class="pill">StatCard</span>
+        <span class="pill">GameButton</span><span class="pill">EmptyState / ErrorState</span><span class="pill">SoundToggle</span>
+      </div>
+      <p>Situés dans <code>core/presentation/components</code> ou <code>shared/components</code> selon qu'ils portent une notion de progression (kernel) ou une simple brique visuelle générique (shared). Composés à partir du design system global de SHALOM — ils ne réinventent pas de tokens visuels indépendants.</p>
+
+      <h3 class="sub-title">Spécifiques à un jeu — non partagés</h3>
+      <p>Vivent dans <code>games/&lt;jeu&gt;/presentation/components</code>, jamais importés par un autre jeu :</p>
+      <div class="pill-row">
+        <span class="pill">WordScrambleGrid</span><span class="pill">MatchPairBoard</span>
+        <span class="pill">HiddenVerseBlanks</span><span class="pill">WhoAmIHintList</span>
+      </div>
+      <div class="callout">
+        <p>Un composant ne migre de <code>games/&lt;jeu&gt;</code> vers <code>shared</code> que le jour où un <strong>deuxième</strong> jeu en a réellement besoin — jamais par anticipation.</p>
+      </div>
+    </section>
+
+    <!-- 09 -->
+    <section class="doc-section" id="s09">
+      <div class="sec-eyebrow"><span class="sec-num">09</span><div class="sec-hr"></div></div>
+      <h2 class="sec-title">Structure de navigation</h2>
+      <p class="lede">Un unique group route Expo Router <code>app/bible-games/</code>, en pile (Stack), avec la barre d'onglets globale de SHALOM masquée pendant une partie active pour maximiser l'immersion.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Écran</th><th>Type</th><th>Rôle</th></tr></thead>
+          <tbody>
+            <tr><td>Accueil Jeux Bibliques</td><td>push</td><td>Liste dynamique des jeux actifs (depuis le registry), bannière défi du jour, XP/niveau du joueur.</td></tr>
+            <tr><td>Sélection Quiz / Qui suis-je / Verset Caché / Mots Mêlés / Associer</td><td>push</td><td>Choix catégorie + difficulté avant de lancer une session.</td></tr>
+            <tr><td>Partie en cours <em>(par jeu)</em></td><td>push, tab bar masquée</td><td>Déroulé de la session — un écran par jeu, structure commune (GameHeader + zone de jeu).</td></tr>
+            <tr><td>Résultat de partie</td><td>modal</td><td>Score, XP gagné, badges débloqués, invitation à rejouer ou revenir à l'accueil.</td></tr>
+            <tr><td>Défi Quotidien</td><td>push</td><td>Détail du défi du jour et accès direct à la session correspondante.</td></tr>
+            <tr><td>Classement</td><td>push</td><td>Filtrable par période (jour/semaine/mois/global) et par jeu.</td></tr>
+            <tr><td>Badges</td><td>push</td><td>Grille des badges obtenus/à obtenir, avec critère d'obtention affiché.</td></tr>
+            <tr><td>Profil joueur</td><td>push</td><td>Avatar, niveau, XP, streak, résumé des statistiques.</td></tr>
+            <tr><td>Historique</td><td>push</td><td>Liste paginée des parties jouées.</td></tr>
+            <tr><td>Statistiques</td><td>push</td><td>Détail des performances par jeu et dans le temps.</td></tr>
+            <tr><td>Paramètres du module</td><td>push</td><td>Son, notifications de défi, préférences de difficulté par défaut.</td></tr>
+            <tr><td>Mode Aventure <em>(futur)</em></td><td>push, feature-flag</td><td>Carte narrative, chapitres, progression — masqué tant que non activé.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 10 -->
+    <section class="doc-section" id="s10">
+      <div class="sec-eyebrow"><span class="sec-num">10</span><div class="sec-hr"></div></div>
+      <h2 class="sec-title">Structure des stores Zustand</h2>
+      <p class="lede">Règle de partage : <strong>React Query possède l'état serveur</strong> (questions, classement, badges, statistiques) ; <strong>Zustand possède l'état client éphémère et transverse aux écrans</strong> (une partie en cours, les préférences locales).</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Store</th><th>Contenu</th><th>Persisté</th></tr></thead>
+          <tbody>
+            <tr><td class="mono-cell">usePlayerStore</td><td>XP, niveau, coins, streak — miroir local optimiste ; la vérité reste côté serveur.</td><td>—</td></tr>
+            <tr><td class="mono-cell">useGameSessionStore</td><td>Partie en cours : index de question, réponses données, chronomètre, pause.</td><td>—</td></tr>
+            <tr><td class="mono-cell">useBadgesStore</td><td>Badges nouvellement débloqués en attente d'affichage (file d'animations à jouer).</td><td>—</td></tr>
+            <tr><td class="mono-cell">useSettingsStore</td><td>Son actif/coupé, difficulté préférée, notifications de défi quotidien.</td><td>AsyncStorage</td></tr>
+            <tr><td class="mono-cell">useLeaderboardFiltersStore</td><td>Période et catégorie sélectionnées sur l'écran Classement (état UI léger).</td><td>—</td></tr>
+            <tr><td class="mono-cell">useOfflineQueueStore</td><td><em>(futur)</em> Actions en attente de synchronisation lorsque le réseau revient.</td><td>AsyncStorage</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 11 -->
+    <section class="doc-section" id="s11">
+      <div class="sec-eyebrow"><span class="sec-num">11</span><div class="sec-hr"></div></div>
+      <h2 class="sec-title">Proposition de schéma Supabase</h2>
+      <p class="lede">Toutes les tables du module sont préfixées <code>bg_</code> (Bible Games) : l'isolation architecturale du module se prolonge jusque dans le schéma de base de données. Aucune migration SQL n'est écrite ici — uniquement la conception.</p>
+
+      <div class="callout gold">
+        <p><strong>Principe anti-triche :</strong> les colonnes de progression (<code>xp_total</code>, <code>current_level</code>, <code>score</code>) ne sont <em>jamais</em> écrites directement par le client. Toute mutation passe par des fonctions Postgres <code>security definer</code> (ex. <code>submit_game_session(...)</code>) qui valident les réponses côté serveur, calculent le score et insèrent atomiquement la session + la transaction XP.</p>
+      </div>
+
+      <h3 class="sub-title">Joueur &amp; progression</h3>
+      <div class="db-grid">
+        <div class="db-card">
+          <div class="db-card-head"><span class="db-name">bg_players</span></div>
+          <p class="db-purpose">Profil de progression d'un joueur, 1-1 avec l'utilisateur SHALOM.</p>
+<div class="db-cols">id             uuid PK, = auth.users.id (FK, on delete cascade)
+display_name   text, not null
+avatar_url     text
+xp_total       integer, not null, default 0   -- écrit uniquement via RPC
+current_level  smallint, not null, default 1  -- écrit uniquement via RPC
+coins          integer, not null, default 0
+streak_count   smallint, not null, default 0
+streak_last_at date
+created_at     timestamptz, not null, default now()</div>
+          <div class="db-meta">
+            <div><b>Relations</b><span>1-1 auth.users · 1-N bg_xp_transactions, bg_player_badges, bg_game_sessions</span></div>
+            <div><b>Index</b><span>PK(id)</span></div>
+            <div><b>RLS</b><span class="rls"><span class="dot restricted"></span>select/update ligne propre ; xp_total et current_level exclus de l'UPDATE client (colonnes protégées par policy + trigger)</span></div>
+          </div>
+        </div>
+
+        <div class="db-card">
+          <div class="db-card-head"><span class="db-name">bg_xp_transactions</span></div>
+          <p class="db-purpose">Journal immuable des gains/pertes d'XP — source d'audit et de recalcul.</p>
+<div class="db-cols">id           bigint PK, identity
+player_id    uuid, not null (FK → bg_players.id)
+session_id   uuid, nullable (FK → bg_game_sessions.id)
+amount       integer, not null
+reason       text, not null            -- 'quiz_win' | 'daily_challenge' | 'level_bonus'…
+created_at   timestamptz, not null, default now()</div>
+          <div class="db-meta">
+            <div><b>Relations</b><span>N-1 bg_players · N-1 bg_game_sessions</span></div>
+            <div><b>Index</b><span>idx(player_id, created_at desc)</span></div>
+            <div><b>RLS</b><span class="rls"><span class="dot restricted"></span>select ligne propre ; insert réservé au rôle service (RPC)</span></div>
+          </div>
+        </div>
+
+        <div class="db-card">
+          <div class="db-card-head"><span class="db-name">bg_levels</span></div>
+          <p class="db-purpose">Référentiel statique des paliers de niveau.</p>
+<div class="db-cols">level        smallint PK
+xp_threshold integer, not null, unique
+title        text, not null
+reward_id    uuid, nullable (FK → bg_rewards.id)</div>
+          <div class="db-meta">
+            <div><b>Relations</b><span>0-1 bg_rewards</span></div>
+            <div><b>Index</b><span>PK(level) · unique(xp_threshold)</span></div>
+            <div><b>RLS</b><span class="rls"><span class="dot open"></span>lecture publique, écriture admin uniquement</span></div>
+          </div>
+        </div>
+
+        <div class="db-card">
+          <div class="db-card-head"><span class="db-name">bg_badges</span></div>
+          <p class="db-purpose">Référentiel des badges disponibles et de leur critère d'obtention.</p>
+<div class="db-cols">id           uuid PK, default gen_random_uuid()
+code         text, not null, unique      -- clé métier stable
+name         text, not null
+description  text
+icon_url     text
+rarity       text, not null              -- 'common'|'rare'|'epic'|'legendary'
+criteria     jsonb, not null             -- règle d'évaluation déclarative</div>
+          <div class="db-meta">
+            <div><b>Relations</b><span>1-N bg_player_badges</span></div>
+            <div><b>Index</b><span>unique(code)</span></div>
+            <div><b>RLS</b><span class="rls"><span class="dot open"></span>lecture publique, écriture admin uniquement</span></div>
+          </div>
+        </div>
+
+        <div class="db-card">
+          <div class="db-card-head"><span class="db-name">bg_player_badges</span></div>
+          <p class="db-purpose">Jonction joueur ↔ badge obtenu.</p>
+<div class="db-cols">player_id    uuid, not null (FK → bg_players.id)
+badge_id     uuid, not null (FK → bg_badges.id)
+unlocked_at  timestamptz, not null, default now()
+PRIMARY KEY (player_id, badge_id)</div>
+          <div class="db-meta">
+            <div><b>Relations</b><span>N-1 bg_players · N-1 bg_badges</span></div>
+            <div><b>Index</b><span>PK composite(player_id, badge_id)</span></div>
+            <div><b>RLS</b><span class="rls"><span class="dot restricted"></span>select ligne propre ; insert réservé au rôle service (RPC)</span></div>
+          </div>
+        </div>
+
+        <div class="db-card">
+          <div class="db-card-head"><span class="db-name">bg_achievements · bg_player_achievements</span></div>
+          <p class="db-purpose">Succès à progression cumulative (même schéma relationnel que les badges), avec une colonne <code>progress_target</code> sur le référentiel et <code>progress_current</code> sur la jonction.</p>
+          <div class="db-meta">
+            <div><b>Relations</b><span>N-1 bg_players · N-1 bg_achievements</span></div>
+            <div><b>Index</b><span>PK composite(player_id, achievement_id)</span></div>
+            <div><b>RLS</b><span class="rls"><span class="dot restricted"></span>select ligne propre ; update réservé au rôle service</span></div>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="sub-title">Contenu &amp; référentiels de jeu</h3>
+      <div class="db-grid">
+        <div class="db-card">
+          <div class="db-card-head"><span class="db-name">bg_games</span></div>
+          <p class="db-purpose">Registry côté serveur : permet d'activer/désactiver un jeu ou de gérer sa version sans déploiement.</p>
+<div class="db-cols">id            text PK               -- 'quiz' | 'who-am-i' | 'adventure'…
+name          text, not null
+description   text
+icon          text
+is_active     boolean, not null, default true
+sort_order    smallint, not null, default 0
+min_app_version text</div>
+          <div class="db-meta">
+            <div><b>Relations</b><span>référencé par bg_game_sessions.game_id</span></div>
+            <div><b>Index</b><span>PK(id) · idx(is_active, sort_order)</span></div>
+            <div><b>RLS</b><span class="rls"><span class="dot open"></span>lecture publique, écriture admin uniquement</span></div>
+          </div>
+        </div>
+
+        <div class="db-card">
+          <div class="db-card-head"><span class="db-name">bg_categories</span></div>
+          <p class="db-purpose">Thèmes bibliques transverses à plusieurs jeux.</p>
+<div class="db-cols">id     uuid PK
+name   text, not null
+slug   text, not null, unique</div>
+          <div class="db-meta">
+            <div><b>Relations</b><span>1-N bg_questions, bg_verses, bg_word_puzzles, bg_match_pairs</span></div>
+            <div><b>Index</b><span>unique(slug)</span></div>
+            <div><b>RLS</b><span class="rls"><span class="dot open"></span>lecture publique, écriture admin uniquement</span></div>
+          </div>
+        </div>
+
+        <div class="db-card">
+          <div class="db-card-head"><span class="db-name">bg_questions</span></div>
+          <p class="db-purpose">Questions utilisées par Quiz et Qui suis-je (discriminées par <code>game_type</code>).</p>
+<div class="db-cols">id             uuid PK
+game_type      text, not null           -- 'quiz' | 'who_am_i'
+category_id    uuid, not null (FK → bg_categories.id)
+difficulty     text, not null           -- 'easy'|'medium'|'hard'|'expert'
+prompt         text, not null
+bible_reference text
+locale         text, not null, default 'fr'</div>
+          <div class="db-meta">
+            <div><b>Relations</b><span>N-1 bg_categories · 1-N bg_answer_options</span></div>
+            <div><b>Index</b><span>idx(game_type, category_id, difficulty)</span></div>
+            <div><b>RLS</b><span class="rls"><span class="dot open"></span>lecture publique, écriture admin/CMS uniquement</span></div>
+          </div>
+        </div>
+
+        <div class="db-card">
+          <div class="db-card-head"><span class="db-name">bg_answer_options</span></div>
+          <p class="db-purpose">Propositions de réponse liées à une question.</p>
+<div class="db-cols">id           uuid PK
+question_id  uuid, not null (FK → bg_questions.id, on delete cascade)
+label        text, not null
+is_correct   boolean, not null, default false</div>
+          <div class="db-meta">
+            <div><b>Relations</b><span>N-1 bg_questions</span></div>
+            <div><b>Index</b><span>idx(question_id)</span></div>
+            <div><b>RLS</b><span class="rls"><span class="dot restricted"></span><code>is_correct</code> exclu des lectures client (vue publique filtrée) ; validation réelle faite côté RPC</span></div>
+          </div>
+        </div>
+
+        <div class="db-card">
+          <div class="db-card-head"><span class="db-name">bg_verses</span></div>
+          <p class="db-purpose">Versets utilisés par Verset Caché.</p>
+<div class="db-cols">id           uuid PK
+category_id  uuid (FK → bg_categories.id)
+reference    text, not null           -- 'Jean 3:16'
+full_text    text, not null
+blanked_text text, not null           -- version à trous
+hints        jsonb</div>
+          <div class="db-meta">
+            <div><b>Relations</b><span>N-1 bg_categories</span></div>
+            <div><b>Index</b><span>idx(category_id)</span></div>
+            <div><b>RLS</b><span class="rls"><span class="dot open"></span>lecture publique, écriture admin uniquement</span></div>
+          </div>
+        </div>
+
+        <div class="db-card">
+          <div class="db-card-head"><span class="db-name">bg_word_puzzles · bg_match_pairs</span></div>
+          <p class="db-purpose">Configurations de contenu pour Mots Mêlés (mot cible, indice, grille) et Associer (paires élément gauche/droit, catégorie) — mêmes garanties de lecture/écriture que <code>bg_verses</code>.</p>
+          <div class="db-meta">
+            <div><b>Relations</b><span>N-1 bg_categories</span></div>
+            <div><b>Index</b><span>idx(category_id)</span></div>
+            <div><b>RLS</b><span class="rls"><span class="dot open"></span>lecture publique, écriture admin uniquement</span></div>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="sub-title">Sessions, défis, classement</h3>
+      <div class="db-grid">
+        <div class="db-card">
+          <div class="db-card-head"><span class="db-name">bg_game_sessions</span></div>
+          <p class="db-purpose">Une partie jouée — écrite exclusivement via la RPC <code>submit_game_session</code>.</p>
+<div class="db-cols">id           uuid PK
+player_id    uuid, not null (FK → bg_players.id)
+game_id      text, not null (FK → bg_games.id)
+mode         text, not null default 'normal'   -- 'normal' | 'daily_challenge'
+status       text, not null default 'completed'
+score        integer, not null
+started_at   timestamptz, not null
+ended_at     timestamptz, not null</div>
+          <div class="db-meta">
+            <div><b>Relations</b><span>N-1 bg_players · N-1 bg_games · 1-N bg_game_session_answers</span></div>
+            <div><b>Index</b><span>idx(player_id, ended_at desc) · idx(game_id, ended_at desc)</span></div>
+            <div><b>RLS</b><span class="rls"><span class="dot restricted"></span>select ligne propre ; insert/update réservés au rôle service (RPC)</span></div>
+          </div>
+        </div>
+
+        <div class="db-card">
+          <div class="db-card-head"><span class="db-name">bg_game_session_answers</span></div>
+          <p class="db-purpose">Détail des réponses données pendant une session (pour l'historique et l'anti-triche).</p>
+<div class="db-cols">id            bigint PK, identity
+session_id    uuid, not null (FK → bg_game_sessions.id, on delete cascade)
+question_id   uuid, not null
+selected_option_id uuid
+is_correct    boolean, not null
+answered_ms   integer                -- temps de réponse</div>
+          <div class="db-meta">
+            <div><b>Relations</b><span>N-1 bg_game_sessions</span></div>
+            <div><b>Index</b><span>idx(session_id)</span></div>
+            <div><b>RLS</b><span class="rls"><span class="dot restricted"></span>select via jointure session propre ; insert réservé au rôle service</span></div>
+          </div>
+        </div>
+
+        <div class="db-card">
+          <div class="db-card-head"><span class="db-name">bg_challenges · bg_challenge_completions</span></div>
+          <p class="db-purpose">Défi programmé pour une date donnée (jeu, configuration, récompense bonus) et sa complétion par joueur.</p>
+<div class="db-cols">-- bg_challenges
+id            uuid PK
+game_id       text, not null (FK → bg_games.id)
+challenge_date date, not null, unique
+config        jsonb, not null
+bonus_reward_id uuid (FK → bg_rewards.id)
+
+-- bg_challenge_completions
+player_id     uuid, not null (FK → bg_players.id)
+challenge_id  uuid, not null (FK → bg_challenges.id)
+session_id    uuid, not null (FK → bg_game_sessions.id)
+completed_at  timestamptz, not null, default now()
+PRIMARY KEY (player_id, challenge_id)</div>
+          <div class="db-meta">
+            <div><b>Relations</b><span>N-1 bg_games · N-1 bg_players · N-1 bg_game_sessions</span></div>
+            <div><b>Index</b><span>unique(challenge_date) · PK composite(player_id, challenge_id)</span></div>
+            <div><b>RLS</b><span class="rls"><span class="dot open"></span>bg_challenges lecture publique · <span class="dot restricted"></span>bg_challenge_completions select propre, insert via RPC</span></div>
+          </div>
+        </div>
+
+        <div class="db-card">
+          <div class="db-card-head"><span class="db-name">bg_leaderboard_entries</span></div>
+          <p class="db-purpose">Vue matérialisée rafraîchie périodiquement (cron Supabase) à partir de <code>bg_game_sessions</code> — jamais de calcul de classement à la volée en production.</p>
+<div class="db-cols">player_id     uuid, not null (FK → bg_players.id)
+period        text, not null        -- 'daily'|'weekly'|'monthly'|'all_time'
+period_key    text, not null        -- '2026-07-23' | '2026-W30' | '2026-07' | 'all'
+total_score   integer, not null
+rank          integer, not null
+PRIMARY KEY (player_id, period, period_key)</div>
+          <div class="db-meta">
+            <div><b>Relations</b><span>N-1 bg_players</span></div>
+            <div><b>Index</b><span>idx(period, period_key, rank)</span></div>
+            <div><b>RLS</b><span class="rls"><span class="dot open"></span>lecture publique (colonnes limitées à display_name/avatar via vue jointe)</span></div>
+          </div>
+        </div>
+
+        <div class="db-card">
+          <div class="db-card-head"><span class="db-name">bg_rewards</span></div>
+          <p class="db-purpose">Récompenses génériques attribuables, avec support des récompenses temporaires pour les événements spéciaux (§15).</p>
+<div class="db-cols">id           uuid PK
+type         text, not null       -- 'coins'|'badge'|'title'|'cosmetic'
+payload      jsonb, not null
+is_temporary boolean, not null, default false
+expires_at   timestamptz</div>
+          <div class="db-meta">
+            <div><b>Relations</b><span>référencé par bg_levels, bg_challenges</span></div>
+            <div><b>Index</b><span>PK(id)</span></div>
+            <div><b>RLS</b><span class="rls"><span class="dot open"></span>lecture publique, écriture admin uniquement</span></div>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="sub-title">Aventure biblique <em>(futur — schéma déjà réservé)</em></h3>
+      <div class="db-grid">
+        <div class="db-card">
+          <div class="db-card-head"><span class="db-name">bg_adventure_chapters · bg_adventure_progress</span></div>
+          <p class="db-purpose">Chapitres narratifs ordonnés et progression séquentielle d'un joueur (chapitre courant, checkpoints, contenus débloqués).</p>
+          <div class="db-meta">
+            <div><b>Relations</b><span>N-1 bg_players · auto-référence order (chapitre suivant)</span></div>
+            <div><b>Index</b><span>idx(player_id) · unique(chapter_order)</span></div>
+            <div><b>RLS</b><span class="rls"><span class="dot locked"></span>table créée mais inactive tant que le jeu n'est pas dans le registry (feature flag <code>is_active=false</code>)</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 12 -->
+    <section class="doc-section" id="s12">
+      <div class="sec-eyebrow"><span class="sec-num">12</span><div class="sec-hr"></div></div>
+      <h2 class="sec-title">Flux de données</h2>
+      <p class="lede">Exemple de bout en bout : un joueur termine un Quiz. Le même flux s'applique à tous les jeux, seul le <code>ScoringService</code> injecté change.</p>
+
+      <div class="diagram-wrap">
+<pre class="mermaid">
+sequenceDiagram
+  participant UI as Écran Résultat (presentation)
+  participant Hook as useSubmitQuiz (React Query mutation)
+  participant Svc as GameSessionService
+  participant Score as ScoringService (Quiz)
+  participant Repo as GameSessionRepository
+  participant DB as Supabase RPC submit_game_session
+  participant XP as XPService
+  participant Badge as BadgeService
+  participant Store as usePlayerStore / useBadgesStore
+
+  UI->>Hook: soumettre réponses
+  Hook->>Svc: submitSession(sessionId, answers)
+  Svc->>Score: computeScore(answers)
+  Score-->>Svc: score
+  Svc->>Repo: persistSession(session, score)
+  Repo->>DB: rpc submit_game_session(...)
+  DB-->>Repo: session validée + xp_awarded
+  Repo-->>Svc: GameSession (entité domaine)
+  Svc->>XP: awardXP(player, xp_awarded)
+  XP-->>Svc: nouveau total + level-up ?
+  Svc->>Badge: evaluate(player, session)
+  Badge-->>Svc: badges débloqués (0..n)
+  Svc-->>Hook: résultat complet
+  Hook->>Store: mise à jour optimiste (XP, niveau, badges en file)
+  Hook-->>UI: invalider caches React Query (historique, stats, classement)
+  UI->>UI: RewardAnimation si level-up / badge
+</pre>
+      </div>
+      <p class="diagram-caption">Le score n'est jamais fait confiance côté client : la RPC recalcule et valide avant d'écrire.</p>
+
+      <ul class="plain">
+        <li><strong>État serveur</strong> (questions, session persistée, classement, stats) transite par React Query, avec des clés namespacées <code>['bible-games', …]</code>.</li>
+        <li><strong>État client éphémère</strong> (réponses en cours de saisie, chronomètre) reste dans <code>useGameSessionStore</code> et ne touche jamais le réseau avant la soumission finale.</li>
+        <li><strong>Effets de bord de gamification</strong> (XP, niveau, badges) sont toujours déclenchés en réaction à une session persistée côté serveur — jamais de manière spéculative avant confirmation.</li>
+      </ul>
+    </section>
+
+    <!-- 13 -->
+    <section class="doc-section" id="s13">
+      <div class="sec-eyebrow"><span class="sec-num">13</span><div class="sec-hr"></div></div>
+      <h2 class="sec-title">Recommandations techniques</h2>
+      <ul class="plain">
+        <li><strong>TypeScript strict</strong> partout, avec un alias de chemin dédié <code>@bible-games/*</code> pointant sur <code>src/features/bible-games</code>.</li>
+        <li><strong>Linter de frontières</strong> (ex. <code>eslint-plugin-boundaries</code>) interdisant tout import de <code>features/bible-games/**</code> depuis l'extérieur du module, sauf via <code>features/bible-games/index.ts</code> ; et interdisant les imports croisés entre dossiers de <code>games/</code>.</li>
+        <li><strong>API publique explicite</strong> : <code>index.ts</code> n'exporte que ce qui doit être consommé ailleurs (composant de navigation racine, fonction d'initialisation du registry). Tout le reste est un détail d'implémentation.</li>
+        <li><strong>Feature flags</strong> pilotés par la colonne <code>bg_games.is_active</code> (et un flag remote équivalent côté app) pour activer le Mode Aventure progressivement, sans redéploiement à risque.</li>
+        <li><strong>React Query</strong> : <code>staleTime</code> long pour les référentiels (questions, badges, niveaux) qui changent rarement, court pour le classement.</li>
+        <li><strong>Validation Zod</strong> colocalisée avec chaque entité, appliquée à la frontière des repositories pour parser défensivement les réponses Supabase.</li>
+        <li><strong>Gestion d'erreur explicite</strong> via un type <code>Result&lt;T, E&gt;</code> partagé dans les use-cases, plutôt que des exceptions qui traversent les couches silencieusement.</li>
+        <li><strong>Injection de dépendances légère</strong> (factory/context simple, pas de framework DI) pour brancher les implémentations de repository dans les services et faciliter les doublures de test.</li>
+        <li><strong>Contenu i18n-ready dès le départ</strong> (colonne <code>locale</code> sur les tables de contenu) : le contenu biblique devra être multilingue tôt ou tard.</li>
+        <li><strong>Lazy loading par jeu</strong> (<code>React.lazy</code> / import dynamique de l'écran) pour que le catalogue de jeux grandisse sans alourdir le temps de démarrage.</li>
+        <li><strong>Pagination</strong> systématique sur historique et classement ; mémoïsation des listes lourdes.</li>
+        <li><strong>Tests en pyramide</strong> : domaine (use-cases, stratégies de scoring) en TypeScript pur sans mock ; repositories testés contre un projet Supabase de test ; composants critiques (ResultModal, XPBar) en tests de composant.</li>
+      </ul>
+    </section>
+
+    <!-- 14 -->
+    <section class="doc-section" id="s14">
+      <div class="sec-eyebrow"><span class="sec-num">14</span><div class="sec-hr"></div></div>
+      <h2 class="sec-title">Bonnes pratiques</h2>
+      <ul class="plain">
+        <li><strong>SOLID appliqué concrètement</strong> — SRP : un service = une responsabilité. OCP : un nouveau jeu s'ajoute via le registry, jamais en modifiant le code existant. LSP : tout <code>IGameModule</code> est interchangeable par l'accueil et le router. ISP : des ports fins (<code>IQuestionRepository</code>, <code>IVerseRepository</code>) plutôt qu'une interface générique fourre-tout. DIP : les services dépendent d'interfaces, jamais d'un client Supabase concret.</li>
+        <li><strong>DRY sans abstraction prématurée (KISS)</strong> — un concept ne rejoint le kernel partagé que lorsqu'il sert réellement ≥2 jeux (XP, session, scoring). En dessous de ce seuil, dupliquer dans le jeu concerné est préférable à une abstraction fragile devinée trop tôt.</li>
+        <li><strong>Convention de nommage cohérente</strong> — dossiers en kebab-case, composants en PascalCase, use-cases nommés par un verbe d'action (<code>submitQuizAnswer.ts</code>, <code>calculateStreak.ts</code>).</li>
+        <li><strong>Checklist de revue de code dédiée</strong> — toute nouvelle fonctionnalité de jeu doit : passer par le <code>GameRegistry</code>, ne rien importer d'un autre dossier de <code>games/</code>, et ne rien exposer en dehors de son propre dossier sauf via le kernel.</li>
+        <li><strong>Documentation vivante par jeu</strong> — un court README dans chaque <code>games/&lt;jeu&gt;/</code> décrivant les règles et la formule de scoring, utile puisque ce document ne détaille volontairement pas la logique métier.</li>
+      </ul>
+    </section>
+
+    <!-- 15 -->
+    <section class="doc-section" id="s15">
+      <div class="sec-eyebrow"><span class="sec-num">15</span><div class="sec-hr"></div></div>
+      <h2 class="sec-title">Évolutions futures</h2>
+      <p class="lede">Chaque besoin d'évolution listé par le produit trouve une extension naturelle dans cette architecture, sans refonte structurelle.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Évolution</th><th>Comment l'architecture l'absorbe</th></tr></thead>
+          <tbody>
+            <tr><td>Jeux multijoueurs</td><td>Les ports sont déjà découplés de Supabase ; une nouvelle implémentation <code>RealtimeGameSessionRepository</code> branche les canaux Supabase Realtime sans toucher aux use-cases.</td></tr>
+            <tr><td>Défis entre amis</td><td>Nouvelle sous-feature <code>social/challenges-friends</code> réutilisant <code>ChallengeService</code> et <code>PlayerRepository</code> ; ajout d'une table <code>bg_friend_challenges</code>.</td></tr>
+            <tr><td>Ligues, saisons</td><td>Extension du modèle de classement avec un <code>season_id</code> et une table <code>bg_seasons</code> — <code>bg_leaderboard_entries</code> n'est pas restructurée.</td></tr>
+            <tr><td>Événements spéciaux, récompenses temporaires</td><td>L'entité <code>Reward</code> possède déjà <code>is_temporary</code>/<code>expires_at</code> — aucune extension du modèle nécessaire.</td></tr>
+            <tr><td>Nouveaux mini-jeux</td><td>Un dossier <code>games/&lt;nouveau-jeu&gt;/</code> plus une entrée registry ; zéro modification du kernel — c'est le critère fondateur de ce document (§01).</td></tr>
+            <tr><td>IA pour générer des questions</td><td>Nouvelle implémentation d'<code>IQuestionRepository</code> (ou un <code>QuestionGenerationService</code> en amont alimentant <code>bg_questions</code>) ; les couches consommatrices ne changent pas.</td></tr>
+            <tr><td>Synchronisation temps réel</td><td>Migration progressive datasource REST → Supabase Realtime derrière les mêmes ports, invisible du domaine et de la presentation.</td></tr>
+            <tr><td>Fonctionnement hors ligne</td><td><code>useOfflineQueueStore</code> et <code>OfflineSyncService</code> déjà prévus dans l'arborescence (pattern outbox) : actions locales rejouées à la reconnexion.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer>
+      <span>SHALOM — Module Jeux Bibliques · document d'architecture</span>
+      <span>Aucun écran, aucune logique métier détaillée, aucun code fonctionnel à ce stade.</span>
+    </footer>
+
+  </main>
+</div>

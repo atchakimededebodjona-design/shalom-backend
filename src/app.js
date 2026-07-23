@@ -80,7 +80,7 @@ app.use(
     // d'upload n'accepte déjà que des images/vidéos authentifiées par leurs
     // octets, mais si un document exécutable parvenait ici, cette CSP
     // l'empêcherait de charger ou d'exécuter quoi que ce soit.
-    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' data: blob:; media-src 'self' data: blob:");
     next();
   },
   express.static(path.join(__dirname, '..', 'uploads'))

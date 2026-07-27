@@ -13,6 +13,43 @@ const ambassadorService = require('../ambassador/ambassador.service');
 // Constante pour le nombre de rounds bcrypt
 const BCRYPT_SALT_ROUNDS = 12;
 
+// Durées de vie des cookies (ms) — indépendantes de JWT_EXPIRES_IN/JWT_REFRESH_EXPIRES_IN
+// (qui bornent la validité cryptographique du token ; le cookie n'est qu'un
+// vecteur de transport, un cookie expiré-mais-présent est sans risque).
+const ACCESS_COOKIE_MAX_AGE = 15 * 60 * 1000; // 15 minutes
+const REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 jours
+
+// Options communes des cookies d'auth : httpOnly (inaccessible en JS, ferme le
+// vecteur de vol de session par XSS), Secure en production (HTTPS uniquement),
+// SameSite=strict (élimine le CSRF sans jeton dédié — aucun scénario de l'app
+// n'a besoin d'envoyer ce cookie sur une requête cross-site).
+const cookieOptions = (maxAge) => ({
+  httpOnly: true,
+  secure: env.NODE_ENV === 'production',
+  sameSite: 'strict',
+  path: '/',
+  maxAge,
+});
+
+/**
+ * Pose les cookies httpOnly access_token/refresh_token sur la réponse.
+ * @param {import('express').Response} res
+ * @param {{access_token: string, refresh_token: string}} tokens
+ */
+const setAuthCookies = (res, { access_token, refresh_token }) => {
+  res.cookie('token', access_token, cookieOptions(ACCESS_COOKIE_MAX_AGE));
+  res.cookie('refresh_token', refresh_token, cookieOptions(REFRESH_COOKIE_MAX_AGE));
+};
+
+/**
+ * Efface les cookies d'auth (déconnexion).
+ * @param {import('express').Response} res
+ */
+const clearAuthCookies = (res) => {
+  res.clearCookie('token', { httpOnly: true, secure: env.NODE_ENV === 'production', sameSite: 'strict', path: '/' });
+  res.clearCookie('refresh_token', { httpOnly: true, secure: env.NODE_ENV === 'production', sameSite: 'strict', path: '/' });
+};
+
 /**
  * Génère un access token JWT
  * @param {object} user - { id, email, role }
@@ -81,6 +118,11 @@ const register = async (req, res, next) => {
     const refreshTokenHash = await bcrypt.hash(refreshToken, BCRYPT_SALT_ROUNDS);
     await authService.updateRefreshToken(user.id, refreshTokenHash);
 
+    // Client web SHALOM : cookies httpOnly (jamais lisibles en JS, ferme le
+    // vecteur de vol par XSS). Les tokens restent aussi dans le corps JSON
+    // pour les clients API/tests qui utilisent l'en-tête Authorization.
+    setAuthCookies(res, { access_token: accessToken, refresh_token: refreshToken });
+
     return res.status(201).json({
       success: true,
       message: 'Inscription réussie. Bienvenue sur SHALOM !',
@@ -133,15 +175,28 @@ const login = async (req, res, next) => {
       );
     }
 
-    // Vérifier le mot de passe
+    // Verrouillage de compte (indépendant du rate limiting par IP, cf.
+    // authLimiter) : protège contre le credential stuffing distribué sur un
+    // même compte depuis des IPs différentes.
+    const isLocked = user.locked_until && new Date(user.locked_until) > new Date();
+
+    // bcrypt.compare est TOUJOURS exécuté, même si le compte est verrouillé :
+    // sinon la réponse "verrouillé" serait plus rapide qu'un échec normal,
+    // ce qui révélerait l'état de verrouillage par un simple timing.
     const isPasswordValid = await bcrypt.compare(password, user.password_hash);
-    if (!isPasswordValid) {
+
+    if (isLocked || !isPasswordValid) {
+      // Message générique dans tous les cas — pas de code/texte distinct pour
+      // "verrouillé" (éviterait sinon de confirmer qu'un compte existe).
+      if (!isLocked) await authService.registerFailedLoginAttempt(user.id);
       throw new AppError(
         'Email ou mot de passe incorrect',
         401,
         'INVALID_CREDENTIALS'
       );
     }
+
+    await authService.resetFailedLoginAttempts(user.id);
 
     // Générer les tokens
     const accessToken = generateAccessToken(user);
@@ -150,6 +205,8 @@ const login = async (req, res, next) => {
     // Stocker le refresh token hashé en base
     const refreshTokenHash = await bcrypt.hash(refreshToken, BCRYPT_SALT_ROUNDS);
     await authService.updateRefreshToken(user.id, refreshTokenHash);
+
+    setAuthCookies(res, { access_token: accessToken, refresh_token: refreshToken });
 
     return res.status(200).json({
       success: true,
@@ -180,7 +237,12 @@ const refresh = async (req, res, next) => {
     // Vérifier les erreurs de validation
     if (hasValidationErrors(req, res)) return;
 
-    const { refresh_token } = req.body;
+    // Priorité au cookie httpOnly (client web) — fallback sur le corps pour
+    // les clients API/tests.
+    const refresh_token = req.cookies?.refresh_token || req.body?.refresh_token;
+    if (!refresh_token) {
+      throw new AppError('Refresh token manquant', 401, 'MISSING_REFRESH_TOKEN');
+    }
 
     // Vérifier et décoder le refresh token
     let decoded;
@@ -219,6 +281,7 @@ const refresh = async (req, res, next) => {
     if (!isTokenValid) {
       // Possible vol de token — révoquer tous les refresh tokens
       await authService.updateRefreshToken(user.id, null);
+      clearAuthCookies(res);
       throw new AppError(
         'Refresh token invalide. Toutes les sessions ont été révoquées.',
         401,
@@ -233,6 +296,8 @@ const refresh = async (req, res, next) => {
     // Stocker le nouveau refresh token hashé
     const newRefreshTokenHash = await bcrypt.hash(newRefreshToken, BCRYPT_SALT_ROUNDS);
     await authService.updateRefreshToken(user.id, newRefreshTokenHash);
+
+    setAuthCookies(res, { access_token: newAccessToken, refresh_token: newRefreshToken });
 
     return res.status(200).json({
       success: true,
@@ -249,8 +314,24 @@ const refresh = async (req, res, next) => {
   }
 };
 
+/**
+ * POST /api/v1/auth/logout
+ * Déconnexion : révoque le refresh token stocké et efface les cookies.
+ * Nécessite d'être authentifié (cookie ou header Bearer).
+ */
+const logout = async (req, res, next) => {
+  try {
+    await authService.updateRefreshToken(req.user.id, null);
+    clearAuthCookies(res);
+    return res.status(200).json({ success: true, message: 'Déconnexion réussie' });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   register,
   login,
   refresh,
+  logout,
 };

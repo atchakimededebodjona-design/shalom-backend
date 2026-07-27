@@ -7,30 +7,23 @@ const { AppError } = require('../../middlewares/error.middleware');
 
 /**
  * Middleware d'authentification JWT
- * Vérifie le token dans le header Authorization: Bearer <token>
+ * Vérifie le token soit dans le cookie httpOnly "token" (client web SHALOM),
+ * soit dans le header Authorization: Bearer <token> (clients API/tests).
  * Attache req.user avec { id, email, role } si valide
  */
 const authenticate = (req, _res, next) => {
   try {
-    // Extraire le header Authorization
+    // Priorité au cookie httpOnly (client web) — fallback sur le header
+    // Authorization pour les clients API/scripts/tests.
     const authHeader = req.headers.authorization;
+    const bearerToken = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+    const token = req.cookies?.token || bearerToken;
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!token) {
       throw new AppError(
         'Token d\'authentification manquant',
         401,
         'MISSING_TOKEN'
-      );
-    }
-
-    // Extraire le token après "Bearer "
-    const token = authHeader.split(' ')[1];
-
-    if (!token) {
-      throw new AppError(
-        'Token d\'authentification invalide',
-        401,
-        'INVALID_TOKEN'
       );
     }
 

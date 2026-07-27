@@ -45,12 +45,15 @@ const loginSchema = [
 ];
 
 /**
- * Validation du refresh token
+ * Validation du refresh token — optionnel dans le corps : peut aussi venir
+ * du cookie httpOnly "refresh_token" (client web). Le contrôleur vérifie
+ * qu'au moins l'un des deux est présent.
  */
 const refreshSchema = [
   body('refresh_token')
-    .notEmpty()
-    .withMessage('Le refresh token est requis'),
+    .optional()
+    .isString()
+    .withMessage('Le refresh token doit être une chaîne'),
 ];
 module.exports = {
   registerSchema,

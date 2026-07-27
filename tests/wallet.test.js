@@ -6,6 +6,7 @@
 // NB (cf. mémoire projet) : les tests tournent sur la même base Supabase que le
 // dev. On isole donc par préfixe et on nettoie en beforeAll/afterAll.
 
+const crypto = require('crypto');
 const request = require('supertest');
 const app = require('../src/app');
 const { pool } = require('../src/config/db');
@@ -24,6 +25,18 @@ let userId;
 let incomeTxId;
 
 const auth = () => ({ Authorization: `Bearer ${token}` });
+
+// Le webhook vérifie une signature HMAC sur le corps BRUT : on doit donc
+// signer exactement la chaîne JSON qu'on envoie (et pas re-sérialiser l'objet
+// côté serveur, qui pourrait différer).
+const signCinetpay = (bodyObj) => {
+  const raw = JSON.stringify(bodyObj);
+  const signature = crypto
+    .createHmac('sha256', process.env.CINETPAY_WEBHOOK_SECRET)
+    .update(raw)
+    .digest('hex');
+  return { raw, signature };
+};
 
 const cleanup = async () => {
   // provider_transactions n'est pas rattaché en cascade dure à l'utilisateur
@@ -122,17 +135,40 @@ describe('Module Wallet (Portefeuille)', () => {
   });
 
   describe('Webhook provider — idempotence', () => {
-    it('crédite le portefeuille au 1er appel (duplicate=false)', async () => {
+    // Fonction (pas une constante) : userId n'est peuplé qu'après beforeAll,
+    // donc évalué à chaque appel plutôt qu'au chargement du describe.
+    const payload = () => ({ user_id: userId, provider_tx_id: WEBHOOK_TX, amount: 50000, direction: 'credit', source: 'topup' });
+
+    it('rejette une requête sans signature valide (aucun crédit)', async () => {
+      const { raw } = signCinetpay(payload());
       const res = await request(app).post('/api/v1/wallet/webhook/cinetpay')
-        .send({ user_id: userId, provider_tx_id: WEBHOOK_TX, amount: 50000, direction: 'credit', source: 'topup' });
+        .set('Content-Type', 'application/json')
+        .send(raw); // pas de header x-provider-signature
+      expect(res.statusCode).toBe(200); // toujours 200 côté provider
+      expect(res.body.received).toBe(true);
+      expect(res.body.duplicate).toBeUndefined(); // jamais traité
+
+      const wallet = await request(app).get('/api/v1/wallet').set(auth());
+      expect(Number(wallet.body.data.wallet.balance)).toBe(70000); // inchangé
+    });
+
+    it('crédite le portefeuille au 1er appel signé (duplicate=false)', async () => {
+      const { raw, signature } = signCinetpay(payload());
+      const res = await request(app).post('/api/v1/wallet/webhook/cinetpay')
+        .set('Content-Type', 'application/json')
+        .set('x-provider-signature', signature)
+        .send(raw);
       expect(res.statusCode).toBe(200);
       expect(res.body.received).toBe(true);
       expect(res.body.duplicate).toBe(false);
     });
 
     it('est idempotent au 2e appel identique (duplicate=true)', async () => {
+      const { raw, signature } = signCinetpay(payload());
       const res = await request(app).post('/api/v1/wallet/webhook/cinetpay')
-        .send({ user_id: userId, provider_tx_id: WEBHOOK_TX, amount: 50000, direction: 'credit', source: 'topup' });
+        .set('Content-Type', 'application/json')
+        .set('x-provider-signature', signature)
+        .send(raw);
       expect(res.statusCode).toBe(200);
       expect(res.body.duplicate).toBe(true);
     });

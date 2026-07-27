@@ -5,6 +5,7 @@ const express = require('express');
 const path = require('path');
 const cors = require('cors');
 const helmet = require('helmet');
+const cookieParser = require('cookie-parser');
 const env = require('./config/env');
 const { notFoundHandler, errorHandler } = require('./middlewares/error.middleware');
 const { globalLimiter } = require('./middlewares/rate-limit.middleware');
@@ -50,10 +51,21 @@ app.use(cors({
 }));
 
 // Parser JSON (limite à 10mb pour les uploads base64)
-app.use(express.json({ limit: '10mb' }));
+// `verify` capture les octets bruts de la requête dans req.rawBody : nécessaire
+// pour vérifier la signature HMAC des webhooks de paiement (wallet), qui doit
+// porter sur le corps EXACT envoyé par le provider, pas sur une reserialisation.
+app.use(express.json({
+  limit: '10mb',
+  verify: (req, _res, buf) => {
+    req.rawBody = buf;
+  },
+}));
 
 // Parser URL-encoded
 app.use(express.urlencoded({ extended: true }));
+
+// Cookies (access_token / refresh_token httpOnly posés par le module auth)
+app.use(cookieParser());
 
 // Rate limiting global (100 req / 15 min par IP)
 app.use(globalLimiter);

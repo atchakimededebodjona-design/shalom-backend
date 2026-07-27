@@ -3,6 +3,11 @@
 
 const { query } = require('../../config/db');
 
+// Verrouillage de compte (indépendant du rate limiting par IP) : au-delà de
+// FAILED_ATTEMPTS_THRESHOLD échecs, le compte est bloqué LOCKOUT_DURATION_MINUTES.
+const FAILED_ATTEMPTS_THRESHOLD = 5;
+const LOCKOUT_DURATION_MINUTES = 15;
+
 /**
  * Crée un nouvel utilisateur
  * @param {string} email - Email de l'utilisateur
@@ -26,7 +31,8 @@ const createUser = async (email, passwordHash) => {
  */
 const findUserByEmail = async (email) => {
   const result = await query(
-    `SELECT id, email, password_hash, role, is_active, created_at
+    `SELECT id, email, password_hash, role, is_active, created_at,
+            failed_login_attempts, locked_until
      FROM users
      WHERE email = $1 AND deleted_at IS NULL`,
     [email]
@@ -76,10 +82,42 @@ const getRefreshToken = async (userId) => {
   return result.rows[0]?.refresh_token || null;
 };
 
+/**
+ * Enregistre un échec de connexion. Verrouille le compte
+ * FAILED_ATTEMPTS_THRESHOLD atteint (indépendamment de l'IP d'origine).
+ * @param {string} userId
+ */
+const registerFailedLoginAttempt = async (userId) => {
+  await query(
+    `UPDATE users
+     SET failed_login_attempts = failed_login_attempts + 1,
+         locked_until = CASE
+           WHEN failed_login_attempts + 1 >= $2
+             THEN now() + ($3 || ' minutes')::interval
+           ELSE locked_until
+         END
+     WHERE id = $1`,
+    [userId, FAILED_ATTEMPTS_THRESHOLD, LOCKOUT_DURATION_MINUTES]
+  );
+};
+
+/**
+ * Réinitialise le compteur d'échecs après une connexion réussie.
+ * @param {string} userId
+ */
+const resetFailedLoginAttempts = async (userId) => {
+  await query(
+    `UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = $1`,
+    [userId]
+  );
+};
+
 module.exports = {
   createUser,
   findUserByEmail,
   findUserById,
   updateRefreshToken,
   getRefreshToken,
+  registerFailedLoginAttempt,
+  resetFailedLoginAttempts,
 };

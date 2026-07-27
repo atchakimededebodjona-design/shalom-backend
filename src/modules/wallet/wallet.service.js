@@ -616,19 +616,14 @@ const softDeleteCategory = async (id, userId) => {
 const verifyWebhookSignature = (provider, rawBody, signature) => {
   const secret = PROVIDER_SECRETS[provider];
   if (!secret) {
-    // Fail-closed en production : un webhook non signé ne doit JAMAIS créditer.
-    if (process.env.NODE_ENV === 'production') {
-      console.error(
-        `[wallet] ❌ Secret webhook absent pour "${provider}" en production — requête REJETÉE. ` +
-        `Configurez ${provider.toUpperCase()}_WEBHOOK_SECRET.`
-      );
-      return false;
-    }
-    // Hors production : on ne bloque pas le dev, mais on trace fortement.
-    console.warn(
-      `[wallet] ⚠️  Aucun secret webhook configuré pour "${provider}" — signature NON vérifiée (dev only)`
+    // Fail-closed dans TOUS les environnements (dev inclus) : un webhook est une
+    // route publique qui crédite un portefeuille sur la seule foi du payload —
+    // sans secret configuré, un attaquant peut forger n'importe quel crédit.
+    console.error(
+      `[wallet] ❌ Secret webhook absent pour "${provider}" — requête REJETÉE. ` +
+      `Configurez ${provider.toUpperCase()}_WEBHOOK_SECRET.`
     );
-    return true;
+    return false;
   }
   // Implémentation générique HMAC-SHA256 hex — À ADAPTER selon le provider.
   const expected = crypto.createHmac('sha256', secret).update(rawBody || '').digest('hex');

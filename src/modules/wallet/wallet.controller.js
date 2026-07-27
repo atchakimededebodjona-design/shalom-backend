@@ -188,12 +188,11 @@ const handleWebhook = async (req, res) => {
       return res.status(200).json({ received: true });
     }
 
-    // 1. Vérification de signature HMAC (STUB).
-    // ⚠️ Le HMAC doit porter sur le corps BRUT. express.json() étant global,
-    // req.rawBody n'existe pas encore : à activer via express.json({ verify })
-    // (voir note dans wallet.routes.js). Fallback dev : JSON.stringify(req.body).
+    // 1. Vérification de signature HMAC. req.rawBody est capté par le `verify`
+    // de express.json() (voir app.js) — ce sont les octets exacts envoyés par
+    // le provider, indispensables pour que le HMAC corresponde.
     const signature = req.headers['x-provider-signature'] || req.headers['x-signature'] || '';
-    const rawBody = req.rawBody || JSON.stringify(req.body || {});
+    const rawBody = req.rawBody || Buffer.from('');
     if (!walletService.verifyWebhookSignature(provider, rawBody, signature)) {
       console.warn(`[wallet][webhook] signature invalide (${provider})`);
       return res.status(200).json({ received: true });

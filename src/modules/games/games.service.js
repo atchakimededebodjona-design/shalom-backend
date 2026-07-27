@@ -19,6 +19,20 @@ function computeLevelFromXp(totalXp) {
 // ============================================================================
 
 /**
+ * Mélange un tableau in place (Fisher-Yates). Utilisé pour que la bonne
+ * réponse ne se retrouve pas toujours au même rang dans les choix affichés
+ * (les questions du seed ont souvent été saisies avec la bonne réponse en
+ * premier).
+ */
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+/**
  * Sélectionne aléatoirement N ids de questions actives pour un jeu/difficulté/
  * catégorie donnés. Renvoie [] si rien ne correspond (à l'appelant de décider
  * si c'est une erreur).
@@ -71,7 +85,9 @@ async function buildQuestionsPayload(client, questionIds) {
       prompt: q.prompt,
       mediaUrl: q.media_url,
       basePoints: q.base_points,
-      choices: choicesByQuestion[q.id] || [],
+      // Mélangé à chaque session : la position de la bonne réponse ne doit
+      // jamais être déductible de l'ordre de saisie en base.
+      choices: shuffle([...(choicesByQuestion[q.id] || [])]),
     };
   });
 }

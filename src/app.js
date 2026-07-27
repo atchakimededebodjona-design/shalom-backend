@@ -26,6 +26,7 @@ const spiritualRoutes = require('./modules/spiritual/spiritual.routes');
 const toolsRoutes = require('./modules/tools/tools.routes');
 const communityRoutes = require('./modules/community/community.routes');
 const walletRoutes = require('./modules/wallet/wallet.routes');
+const gamesRoutes = require('./modules/games/games.routes');
 const billingRoutes = require('./modules/billing/billing.routes');
 const ambassadorRoutes = require('./modules/ambassador/ambassador.routes');
 
@@ -104,6 +105,7 @@ app.use('/api/v1/spiritual', spiritualRoutes);
 app.use('/api/v1/tools', toolsRoutes);
 app.use('/api/v1/community', communityRoutes);
 app.use('/api/v1/wallet', walletRoutes);
+app.use('/api/v1/games', gamesRoutes);
 app.use('/api/v1/billing', billingRoutes);
 const shalomTvRoutes = require('./modules/shalom-tv/shalom-tv.routes');
 const adsRoutes = require('./modules/ads/ads.routes');

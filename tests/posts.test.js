@@ -65,6 +65,50 @@ describe('Module Posts', () => {
     });
   });
 
+  describe('Séparation fil général / posts de groupe', () => {
+    let groupId, groupPostId;
+
+    it('crée un groupe et y publie un post', async () => {
+      const groupRes = await request(app)
+        .post('/api/v1/groups')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Groupe Posts Test', description: 'Test', visibility: 'public' });
+      expect(groupRes.statusCode).toBe(201);
+      groupId = groupRes.body.data.group.id;
+
+      const postRes = await request(app)
+        .post('/api/v1/posts')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ type: 'texte', content: 'Post du groupe', group_id: groupId });
+      expect(postRes.statusCode).toBe(201);
+      groupPostId = postRes.body.data.post.id;
+      expect(postRes.body.data.post.group_id).toBe(groupId);
+    });
+
+    it("n'apparaît PAS dans le fil général (sans group_id)", async () => {
+      const res = await request(app).get('/api/v1/posts').set('Authorization', `Bearer ${token}`);
+      expect(res.statusCode).toBe(200);
+      const ids = res.body.data.posts.map((p) => p.id);
+      expect(ids).not.toContain(groupPostId);
+    });
+
+    it('apparaît bien dans le fil du groupe (?group_id=...)', async () => {
+      const res = await request(app)
+        .get(`/api/v1/posts?group_id=${groupId}`)
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.statusCode).toBe(200);
+      const ids = res.body.data.posts.map((p) => p.id);
+      expect(ids).toContain(groupPostId);
+    });
+
+    afterAll(async () => {
+      if (groupId) {
+        await pool.query('DELETE FROM group_members WHERE group_id = $1', [groupId]);
+        await pool.query('DELETE FROM groups WHERE id = $1', [groupId]);
+      }
+    });
+  });
+
   describe('DELETE /api/v1/posts/:id', () => {
     it('devrait supprimer un post', async () => {
       const res = await request(app)

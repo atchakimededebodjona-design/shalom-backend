@@ -30,6 +30,9 @@ const createPost = async (authorId, postData) => {
  * @returns {Promise<{ posts: Array, total: number }>}
  */
 const getFeed = async (userId, limit, offset, groupId = null) => {
+  // Sans groupId : fil d'actualité général — un post publié dans un groupe ne
+  // doit apparaître QUE sur la page de ce groupe, jamais mélangé au fil
+  // principal (cf. p.group_id IS NULL).
   const groupFilter = groupId
     ? `AND p.group_id = $4 AND (
          EXISTS (SELECT 1 FROM groups g WHERE g.id = $4 AND g.visibility = 'public')
@@ -38,10 +41,10 @@ const getFeed = async (userId, limit, offset, groupId = null) => {
            WHERE gm.group_id = $4 AND gm.user_id = $1 AND gm.status = 'actif'
          )
        )`
-    : '';
+    : 'AND p.group_id IS NULL';
   const countParams = groupId ? [userId, groupId] : [];
 
-  // Compter le total de posts publiés (dans le groupe si groupId fourni)
+  // Compter le total de posts publiés (dans le groupe si groupId fourni, sinon hors groupe)
   const countResult = await query(
     `SELECT count(*) FROM posts p WHERE p.status = 'publie' ${groupId ? `AND p.group_id = $2 AND (
          EXISTS (SELECT 1 FROM groups g WHERE g.id = $2 AND g.visibility = 'public')
@@ -49,7 +52,7 @@ const getFeed = async (userId, limit, offset, groupId = null) => {
            SELECT 1 FROM group_members gm
            WHERE gm.group_id = $2 AND gm.user_id = $1 AND gm.status = 'actif'
          )
-       )` : ''}`,
+       )` : 'AND p.group_id IS NULL'}`,
     countParams
   );
   const total = parseInt(countResult.rows[0].count, 10);

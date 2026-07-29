@@ -1,6 +1,7 @@
 const request = require('supertest');
 const app = require('../src/app');
 const { pool } = require('../src/config/db');
+const { registerAndVerify } = require('./helpers');
 
 const PREFIX = 'test-jest-finance-';
 const user = { email: `${PREFIX}user@shalom.dev`, password: 'Password123!', display_name: 'Finance Tester' };
@@ -13,7 +14,7 @@ const auth = () => ({ Authorization: `Bearer ${token}` });
 describe('Module Finance', () => {
   beforeAll(async () => {
     await pool.query('DELETE FROM users WHERE email LIKE $1', [`${PREFIX}%`]);
-    const res = await request(app).post('/api/v1/auth/register').send(user);
+    const { verifyRes: res } = await registerAndVerify(user);
     token = res.body.data.tokens.access_token;
   });
 

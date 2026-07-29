@@ -54,4 +54,23 @@ const camajLimiter = rateLimit({
   },
 });
 
-module.exports = { authLimiter, globalLimiter, camajLimiter };
+/**
+ * Rate limiter pour la vérification d'email et le renvoi de code.
+ * Limite : 20 requêtes par fenêtre de 15 minutes par IP — plus généreuse que
+ * authLimiter car ce flux implique légitimement plusieurs allers-retours
+ * (faute de frappe sur le code, demande de renvoi) sans que ce soit un signal
+ * de brute-force comme le serait une rafale de tentatives de connexion.
+ */
+const verificationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'Trop de tentatives. Veuillez réessayer dans 15 minutes.',
+    code: 'TOO_MANY_REQUESTS',
+  },
+});
+
+module.exports = { authLimiter, globalLimiter, camajLimiter, verificationLimiter };

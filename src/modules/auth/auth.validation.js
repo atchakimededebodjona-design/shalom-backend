@@ -55,8 +55,56 @@ const refreshSchema = [
     .isString()
     .withMessage('Le refresh token doit être une chaîne'),
 ];
+/**
+ * Validation du changement de mot de passe
+ */
+const changePasswordSchema = [
+  body('current_password')
+    .notEmpty()
+    .withMessage('Le mot de passe actuel est requis'),
+
+  body('new_password')
+    .isLength({ min: 8 })
+    .withMessage('Le nouveau mot de passe doit contenir au moins 8 caractères')
+    .matches(/[A-Z]/)
+    .withMessage('Le nouveau mot de passe doit contenir au moins une majuscule')
+    .matches(/[0-9]/)
+    .withMessage('Le nouveau mot de passe doit contenir au moins un chiffre'),
+];
+
+/**
+ * Validation de la vérification d'email
+ */
+const verifyEmailSchema = [
+  body('email')
+    .trim()
+    .isEmail()
+    .withMessage('Veuillez fournir une adresse email valide')
+    .normalizeEmail(),
+  body('code')
+    .trim()
+    .isLength({ min: 6, max: 6 })
+    .withMessage('Le code doit contenir 6 chiffres')
+    .isNumeric()
+    .withMessage('Le code doit contenir 6 chiffres'),
+];
+
+/**
+ * Validation du renvoi de code de vérification
+ */
+const resendVerificationSchema = [
+  body('email')
+    .trim()
+    .isEmail()
+    .withMessage('Veuillez fournir une adresse email valide')
+    .normalizeEmail(),
+];
+
 module.exports = {
   registerSchema,
   loginSchema,
   refreshSchema,
+  changePasswordSchema,
+  verifyEmailSchema,
+  resendVerificationSchema,
 };

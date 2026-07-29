@@ -1,6 +1,7 @@
 const request = require('supertest');
 const app = require('../src/app');
 const { pool } = require('../src/config/db');
+const { registerAndVerify } = require('./helpers');
 
 const TEST_EMAIL_PREFIX = 'test-jest-follows-';
 let userA = { email: `${TEST_EMAIL_PREFIX}alice@shalom.dev`, password: 'Password123!', display_name: 'Alice Follows' };
@@ -16,10 +17,10 @@ describe('Module Follows', () => {
       await pool.query(`DELETE FROM follows WHERE follower_id = ANY($1) OR followed_id = ANY($1)`, [userIdsBefore]);
       await pool.query('DELETE FROM users WHERE id = ANY($1)', [userIdsBefore]);
     }
-    const resA = await request(app).post('/api/v1/auth/register').send(userA);
+    const { verifyRes: resA } = await registerAndVerify(userA);
     tokenA = resA.body.data.tokens.access_token;
 
-    const resB = await request(app).post('/api/v1/auth/register').send(userB);
+    const { verifyRes: resB } = await registerAndVerify(userB);
     tokenB = resB.body.data.tokens.access_token;
     userIdB = resB.body.data.user.id;
   });

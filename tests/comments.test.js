@@ -1,6 +1,7 @@
 const request = require('supertest');
 const app = require('../src/app');
 const { pool } = require('../src/config/db');
+const { registerAndVerify } = require('./helpers');
 
 const TEST_EMAIL_PREFIX = 'test-jest-comments-';
 let userA = { email: `${TEST_EMAIL_PREFIX}alice@shalom.dev`, password: 'Password123!', display_name: 'Alice Comments' };
@@ -9,7 +10,7 @@ let token, postId, commentId;
 describe('Module Comments', () => {
   beforeAll(async () => {
     await pool.query('DELETE FROM users WHERE email LIKE $1', [`${TEST_EMAIL_PREFIX}%`]);
-    const res = await request(app).post('/api/v1/auth/register').send(userA);
+    const { verifyRes: res } = await registerAndVerify(userA);
     token = res.body.data.tokens.access_token;
 
     // Créer un post pour commenter

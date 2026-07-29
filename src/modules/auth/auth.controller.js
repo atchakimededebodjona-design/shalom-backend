@@ -2,6 +2,7 @@
 // Contrôleur du module auth — reçoit les requêtes, appelle le service, renvoie les réponses
 
 const bcrypt = require('bcrypt');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { hasValidationErrors } = require('../../utils/validate');
 const env = require('../../config/env');
@@ -9,6 +10,13 @@ const { AppError } = require('../../middlewares/error.middleware');
 const authService = require('./auth.service');
 const profilesService = require('../profiles/profiles.service');
 const ambassadorService = require('../ambassador/ambassador.service');
+const { sendVerificationEmail } = require('../../utils/email');
+
+/**
+ * Génère un code de vérification à 6 chiffres.
+ * @returns {string}
+ */
+const generateVerificationCode = () => String(crypto.randomInt(0, 1000000)).padStart(6, '0');
 
 // Constante pour le nombre de rounds bcrypt
 const BCRYPT_SALT_ROUNDS = 12;
@@ -110,34 +118,23 @@ const register = async (req, res, next) => {
     await ambassadorService.joinProgram(user.id);
     profile.is_ambassador = true; // Pour la réponse json
 
-    // Générer les tokens
-    const accessToken = generateAccessToken(user);
-    const refreshToken = generateRefreshToken(user);
-
-    // Stocker le refresh token hashé en base
-    const refreshTokenHash = await bcrypt.hash(refreshToken, BCRYPT_SALT_ROUNDS);
-    await authService.updateRefreshToken(user.id, refreshTokenHash);
-
-    // Client web SHALOM : cookies httpOnly (jamais lisibles en JS, ferme le
-    // vecteur de vol par XSS). Les tokens restent aussi dans le corps JSON
-    // pour les clients API/tests qui utilisent l'en-tête Authorization.
-    setAuthCookies(res, { access_token: accessToken, refresh_token: refreshToken });
+    // L'inscription n'est pas encore "réussie" au sens plein : aucun token
+    // n'est émis tant que l'email n'est pas vérifié par le code envoyé.
+    const code = generateVerificationCode();
+    const codeHash = await bcrypt.hash(code, BCRYPT_SALT_ROUNDS);
+    await authService.setEmailVerificationCode(user.id, codeHash);
+    await sendVerificationEmail(user.email, code, profile.display_name);
 
     return res.status(201).json({
       success: true,
-      message: 'Inscription réussie. Bienvenue sur SHALOM !',
+      message: 'Inscription initiée. Un code de vérification a été envoyé à votre adresse email.',
       data: {
         user: {
           id: user.id,
           email: user.email,
-          role: user.role,
           display_name: profile.display_name,
-          plan: profile.plan,
         },
-        tokens: {
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        },
+        requires_verification: true,
       },
     });
   } catch (error) {
@@ -197,6 +194,17 @@ const login = async (req, res, next) => {
     }
 
     await authService.resetFailedLoginAttempts(user.id);
+
+    // Email non vérifié : bloqué APRÈS la vérification du mot de passe (pas
+    // avant), pour ne jamais révéler ce statut à quelqu'un qui ne connaît pas
+    // déjà le bon mot de passe.
+    if (!user.email_verified) {
+      throw new AppError(
+        'Veuillez vérifier votre adresse email avant de vous connecter.',
+        403,
+        'EMAIL_NOT_VERIFIED'
+      );
+    }
 
     // Générer les tokens
     const accessToken = generateAccessToken(user);
@@ -329,9 +337,149 @@ const logout = async (req, res, next) => {
   }
 };
 
+/**
+ * PATCH /api/v1/auth/password
+ * Change le mot de passe de l'utilisateur connecté.
+ * Révoque le refresh token existant et en émet un nouveau (rotation) : les
+ * autres sessions ouvertes avec l'ancien mot de passe sont déconnectées.
+ */
+const changePassword = async (req, res, next) => {
+  try {
+    if (hasValidationErrors(req, res)) return;
+
+    const { current_password, new_password } = req.body;
+
+    const user = await authService.findUserByIdWithPassword(req.user.id);
+    if (!user) {
+      throw new AppError('Utilisateur introuvable', 401, 'USER_NOT_FOUND');
+    }
+
+    const isCurrentValid = await bcrypt.compare(current_password, user.password_hash);
+    if (!isCurrentValid) {
+      throw new AppError('Mot de passe actuel incorrect', 401, 'INVALID_CURRENT_PASSWORD');
+    }
+
+    const newPasswordHash = await bcrypt.hash(new_password, BCRYPT_SALT_ROUNDS);
+    await authService.updatePassword(user.id, newPasswordHash);
+
+    // Rotation des tokens : la session courante reste valide (nouveaux
+    // cookies posés), mais toute autre session utilisant l'ancien refresh
+    // token est invalidée.
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+    const refreshTokenHash = await bcrypt.hash(refreshToken, BCRYPT_SALT_ROUNDS);
+    await authService.updateRefreshToken(user.id, refreshTokenHash);
+    setAuthCookies(res, { access_token: accessToken, refresh_token: refreshToken });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Mot de passe modifié avec succès',
+      data: { tokens: { access_token: accessToken, refresh_token: refreshToken } },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/v1/auth/verify-email
+ * Vérifie le code reçu par email et, si valide, complète l'inscription :
+ * marque l'email vérifié et émet les tokens (connexion automatique).
+ */
+const verifyEmail = async (req, res, next) => {
+  try {
+    if (hasValidationErrors(req, res)) return;
+
+    const { email, code } = req.body;
+
+    const user = await authService.findUserByEmail(email);
+    if (!user) {
+      throw new AppError('Code de vérification invalide ou expiré', 400, 'INVALID_CODE');
+    }
+
+    if (user.email_verified) {
+      throw new AppError('Cet email est déjà vérifié, vous pouvez vous connecter.', 409, 'ALREADY_VERIFIED');
+    }
+
+    const expired = !user.email_verification_code_hash
+      || !user.email_verification_expires_at
+      || new Date(user.email_verification_expires_at) < new Date();
+
+    if (expired) {
+      throw new AppError(
+        'Code expiré ou trop d\'essais incorrects. Demandez un nouveau code.',
+        400,
+        'CODE_EXPIRED'
+      );
+    }
+
+    const isCodeValid = await bcrypt.compare(code, user.email_verification_code_hash);
+    if (!isCodeValid) {
+      await authService.registerFailedVerificationAttempt(user.id);
+      throw new AppError('Code de vérification incorrect', 400, 'INVALID_CODE');
+    }
+
+    await authService.markEmailVerified(user.id);
+
+    // Connexion automatique : l'inscription est désormais pleinement réussie.
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+    const refreshTokenHash = await bcrypt.hash(refreshToken, BCRYPT_SALT_ROUNDS);
+    await authService.updateRefreshToken(user.id, refreshTokenHash);
+    setAuthCookies(res, { access_token: accessToken, refresh_token: refreshToken });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Email vérifié avec succès. Bienvenue sur SHALOM !',
+      data: {
+        user: { id: user.id, email: user.email, role: user.role },
+        tokens: { access_token: accessToken, refresh_token: refreshToken },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/v1/auth/resend-verification
+ * Renvoie un nouveau code de vérification. Répond toujours avec le même
+ * message générique, que l'email existe ou non (anti-énumération).
+ */
+const resendVerification = async (req, res, next) => {
+  try {
+    if (hasValidationErrors(req, res)) return;
+
+    const { email } = req.body;
+    const genericResponse = {
+      success: true,
+      message: 'Si un compte non vérifié existe pour cet email, un nouveau code vient d\'être envoyé.',
+    };
+
+    const user = await authService.findUserByEmail(email);
+    if (!user || user.email_verified) {
+      return res.status(200).json(genericResponse);
+    }
+
+    const code = generateVerificationCode();
+    const codeHash = await bcrypt.hash(code, BCRYPT_SALT_ROUNDS);
+    await authService.setEmailVerificationCode(user.id, codeHash);
+
+    const profile = await profilesService.findProfileByUserId(user.id);
+    await sendVerificationEmail(user.email, code, profile?.display_name || user.email);
+
+    return res.status(200).json(genericResponse);
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   register,
   login,
   refresh,
   logout,
+  changePassword,
+  verifyEmail,
+  resendVerification,
 };

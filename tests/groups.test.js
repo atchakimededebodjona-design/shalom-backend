@@ -1,6 +1,7 @@
 const request = require('supertest');
 const app = require('../src/app');
 const { pool } = require('../src/config/db');
+const { registerAndVerify } = require('./helpers');
 
 const TEST_EMAIL_PREFIX = 'test-jest-groups-';
 let userA = { email: `${TEST_EMAIL_PREFIX}alice@shalom.dev`, password: 'Password123!', display_name: 'Alice Groups' };
@@ -15,7 +16,7 @@ describe('Module Groups', () => {
       await pool.query('DELETE FROM groups WHERE created_by = ANY($1)', [userIdsBefore]);
       await pool.query('DELETE FROM users WHERE id = ANY($1)', [userIdsBefore]);
     }
-    const res = await request(app).post('/api/v1/auth/register').send(userA);
+    const { verifyRes: res } = await registerAndVerify(userA);
     token = res.body.data.tokens.access_token;
   });
 

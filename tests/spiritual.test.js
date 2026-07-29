@@ -1,6 +1,7 @@
 const request = require('supertest');
 const app = require('../src/app');
 const { pool } = require('../src/config/db');
+const { registerAndVerify } = require('./helpers');
 
 const PREFIX = 'test-jest-spirit-';
 const admin = { email: `${PREFIX}admin@shalom.dev`, password: 'Password123!', display_name: 'Spirit Admin' };
@@ -51,9 +52,9 @@ describe('Module Spiritual', () => {
   beforeAll(async () => {
     await cleanup();
     process.env.ADMIN_EMAILS = admin.email; // injection de l'admin pour cette suite
-    const a = await request(app).post('/api/v1/auth/register').send(admin);
+    const { verifyRes: a } = await registerAndVerify(admin);
     tokenAdmin = a.body.data.tokens.access_token;
-    const u = await request(app).post('/api/v1/auth/register').send(user);
+    const { verifyRes: u } = await registerAndVerify(user);
     tokenUser = u.body.data.tokens.access_token;
   });
 

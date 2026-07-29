@@ -4,11 +4,14 @@
 const { Router } = require('express');
 const authController = require('./auth.controller');
 const { authenticate } = require('./auth.middleware');
-const { authLimiter } = require('../../middlewares/rate-limit.middleware');
+const { authLimiter, verificationLimiter } = require('../../middlewares/rate-limit.middleware');
 const {
   registerSchema,
   loginSchema,
   refreshSchema,
+  changePasswordSchema,
+  verifyEmailSchema,
+  resendVerificationSchema,
 } = require('./auth.validation');
 
 const router = Router();
@@ -97,6 +100,51 @@ router.post('/refresh', authLimiter, refreshSchema, authController.refresh);
 
 /**
  * @swagger
+ * /api/v1/auth/verify-email:
+ *   post:
+ *     summary: Vérifier l'email avec le code reçu et finaliser l'inscription
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, code]
+ *             properties:
+ *               email: { type: string }
+ *               code: { type: string, example: "123456" }
+ *     responses:
+ *       200:
+ *         description: Email vérifié, tokens émis
+ *       400:
+ *         description: Code invalide ou expiré
+ */
+router.post('/verify-email', verificationLimiter, verifyEmailSchema, authController.verifyEmail);
+
+/**
+ * @swagger
+ * /api/v1/auth/resend-verification:
+ *   post:
+ *     summary: Renvoyer un nouveau code de vérification par email
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email]
+ *             properties:
+ *               email: { type: string }
+ *     responses:
+ *       200:
+ *         description: Réponse générique (anti-énumération)
+ */
+router.post('/resend-verification', verificationLimiter, resendVerificationSchema, authController.resendVerification);
+
+/**
+ * @swagger
  * /api/v1/auth/logout:
  *   post:
  *     summary: Déconnexion (révoque le refresh token, efface les cookies)
@@ -110,5 +158,33 @@ router.post('/refresh', authLimiter, refreshSchema, authController.refresh);
  *         description: Non authentifié
  */
 router.post('/logout', authenticate, authController.logout);
+
+/**
+ * @swagger
+ * /api/v1/auth/password:
+ *   patch:
+ *     summary: Changer le mot de passe du compte connecté
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [current_password, new_password]
+ *             properties:
+ *               current_password:
+ *                 type: string
+ *               new_password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Mot de passe modifié avec succès
+ *       401:
+ *         description: Mot de passe actuel incorrect
+ */
+router.patch('/password', authenticate, changePasswordSchema, authController.changePassword);
 
 module.exports = router;

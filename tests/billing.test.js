@@ -1,6 +1,7 @@
 const request = require('supertest');
 const app = require('../src/app');
 const { pool } = require('../src/config/db');
+const { registerAndVerify } = require('./helpers');
 
 const PREFIX = 'test-jest-billing-';
 const user = { email: `${PREFIX}user@shalom.dev`, password: 'Password123!', display_name: 'Billing Tester' };
@@ -14,7 +15,7 @@ const auth = () => ({ Authorization: `Bearer ${token}` });
 describe('Module Billing (Reçu+)', () => {
   beforeAll(async () => {
     await pool.query('DELETE FROM users WHERE email LIKE $1', [`${PREFIX}%`]);
-    const res = await request(app).post('/api/v1/auth/register').send(user);
+    const { verifyRes: res } = await registerAndVerify(user);
     token = res.body.data.tokens.access_token;
   });
 
@@ -172,7 +173,7 @@ describe('Module Billing (Reçu+)', () => {
 
     it("refuse l'accès aux factures d'un autre utilisateur", async () => {
       const other = { email: `${PREFIX}other@shalom.dev`, password: 'Password123!', display_name: 'Autre' };
-      const otherRes = await request(app).post('/api/v1/auth/register').send(other);
+      const { verifyRes: otherRes } = await registerAndVerify(other);
       const otherToken = otherRes.body.data.tokens.access_token;
 
       const res = await request(app).get(`/api/v1/billing/invoices/${invoiceId}`)

@@ -1,6 +1,7 @@
 const request = require('supertest');
 const app = require('../src/app');
 const { pool } = require('../src/config/db');
+const { registerAndVerify } = require('./helpers');
 
 const PREFIX = 'test-jest-comm-';
 const admin = { email: `${PREFIX}admin@shalom.dev`, password: 'Password123!', display_name: 'Comm Admin' };
@@ -46,11 +47,11 @@ describe('Module Community', () => {
   beforeAll(async () => {
     await cleanup();
     process.env.ADMIN_EMAILS = admin.email; // annonces globales réservées aux admins
-    const a = await request(app).post('/api/v1/auth/register').send(admin);
+    const { verifyRes: a } = await registerAndVerify(admin);
     tokenAdmin = a.body.data.tokens.access_token;
-    const m = await request(app).post('/api/v1/auth/register').send(member);
+    const { verifyRes: m } = await registerAndVerify(member);
     tokenMember = m.body.data.tokens.access_token;
-    const o = await request(app).post('/api/v1/auth/register').send(outsider);
+    const { verifyRes: o } = await registerAndVerify(outsider);
     tokenOut = o.body.data.tokens.access_token;
 
     const gp = await request(app).post('/api/v1/groups').set(asAdmin())

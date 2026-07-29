@@ -7,6 +7,7 @@
 const request = require('supertest');
 const app = require('../src/app');
 const { pool } = require('../src/config/db');
+const { registerAndVerify } = require('./helpers');
 
 const PREFIX = 'test-jest-games-duel-';
 const player1 = { email: `${PREFIX}p1@shalom.dev`, password: 'Password123!', display_name: 'Duel P1' };
@@ -44,15 +45,15 @@ describe('Module Games — Duels et Défi quotidien', () => {
   beforeAll(async () => {
     await cleanup();
 
-    let res = await request(app).post('/api/v1/auth/register').send(player1);
+    let { verifyRes: res } = await registerAndVerify(player1);
     token1 = res.body.data.tokens.access_token;
     userId1 = res.body.data.user.id;
 
-    res = await request(app).post('/api/v1/auth/register').send(player2);
+    ({ verifyRes: res } = await registerAndVerify(player2));
     token2 = res.body.data.tokens.access_token;
     userId2 = res.body.data.user.id;
 
-    res = await request(app).post('/api/v1/auth/register').send(outsider);
+    ({ verifyRes: res } = await registerAndVerify(outsider));
     tokenOutsider = res.body.data.tokens.access_token;
 
     const gameRes = await pool.query("SELECT id FROM games WHERE code = 'quiz_biblique'");

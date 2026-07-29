@@ -8,6 +8,7 @@ const request = require('supertest');
 const app = require('../src/app');
 const { pool } = require('../src/config/db');
 const ambassadorService = require('../src/modules/ambassador/ambassador.service');
+const { registerAndVerify } = require('./helpers');
 
 const PREFIX = 'test-jest-ambassador-';
 
@@ -34,15 +35,11 @@ describe('Module Ambassadeur', () => {
     await pool.query('DELETE FROM users WHERE email LIKE $1', [`${PREFIX}%`]);
 
     // Créer les deux comptes de test
-    const resA = await request(app)
-      .post('/api/v1/auth/register')
-      .send(userA);
+    const { verifyRes: resA } = await registerAndVerify(userA);
     tokenA  = resA.body.data?.tokens?.access_token;
     userAId = resA.body.data?.user?.id;
 
-    const resB = await request(app)
-      .post('/api/v1/auth/register')
-      .send(userB);
+    const { verifyRes: resB } = await registerAndVerify(userB);
     tokenB  = resB.body.data?.tokens?.access_token;
     userBId = resB.body.data?.user?.id;
   });

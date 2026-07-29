@@ -1,6 +1,7 @@
 const request = require('supertest');
 const app = require('../src/app');
 const { pool } = require('../src/config/db');
+const { registerAndVerify } = require('./helpers');
 
 const TEST_EMAIL_PREFIX = 'test-jest-messages-';
 let userA = { email: `${TEST_EMAIL_PREFIX}alice@shalom.dev`, password: 'Password123!', display_name: 'Alice Messages' };
@@ -10,10 +11,10 @@ let tokenA, tokenB, userIdB, conversationId;
 describe('Module Messages', () => {
   beforeAll(async () => {
     await pool.query('DELETE FROM users WHERE email LIKE $1', [`${TEST_EMAIL_PREFIX}%`]);
-    const resA = await request(app).post('/api/v1/auth/register').send(userA);
+    const { verifyRes: resA } = await registerAndVerify(userA);
     tokenA = resA.body.data.tokens.access_token;
 
-    const resB = await request(app).post('/api/v1/auth/register').send(userB);
+    const { verifyRes: resB } = await registerAndVerify(userB);
     tokenB = resB.body.data.tokens.access_token;
     userIdB = resB.body.data.user.id;
   });

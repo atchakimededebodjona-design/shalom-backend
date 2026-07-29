@@ -10,6 +10,7 @@ const crypto = require('crypto');
 const request = require('supertest');
 const app = require('../src/app');
 const { pool } = require('../src/config/db');
+const { registerAndVerify } = require('./helpers');
 
 const PREFIX = 'test-jest-wallet-';
 const user = {
@@ -49,7 +50,7 @@ const cleanup = async () => {
 describe('Module Wallet (Portefeuille)', () => {
   beforeAll(async () => {
     await cleanup();
-    const res = await request(app).post('/api/v1/auth/register').send(user);
+    const { verifyRes: res } = await registerAndVerify(user);
     token = res.body.data.tokens.access_token;
     userId = res.body.data.user.id;
   });

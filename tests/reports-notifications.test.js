@@ -1,6 +1,7 @@
 const request = require('supertest');
 const app = require('../src/app');
 const { pool } = require('../src/config/db');
+const { registerAndVerify } = require('./helpers');
 
 const TEST_EMAIL_PREFIX = 'test-jest-repnot-';
 let userA = { email: `${TEST_EMAIL_PREFIX}alice@shalom.dev`, password: 'Password123!', display_name: 'Alice RepNot' };
@@ -16,14 +17,14 @@ describe('Module Reports & Notifications', () => {
     // Inject admin email dynamically for this suite
     process.env.ADMIN_EMAILS = admin.email;
 
-    const resA = await request(app).post('/api/v1/auth/register').send(userA);
+    const { verifyRes: resA } = await registerAndVerify(userA);
     tokenA = resA.body.data.tokens.access_token;
     userIdA = resA.body.data.user.id;
 
-    const resB = await request(app).post('/api/v1/auth/register').send(userB);
+    const { verifyRes: resB } = await registerAndVerify(userB);
     tokenB = resB.body.data.tokens.access_token;
 
-    const resAdmin = await request(app).post('/api/v1/auth/register').send(admin);
+    const { verifyRes: resAdmin } = await registerAndVerify(admin);
     tokenAdmin = resAdmin.body.data.tokens.access_token;
   });
 

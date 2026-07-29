@@ -1,6 +1,7 @@
 const request = require('supertest');
 const app = require('../src/app');
 const { pool } = require('../src/config/db');
+const { registerAndVerify } = require('./helpers');
 
 // Préfixe propre à cette suite (couvert par le nettoyage global test-jest-).
 const PREFIX = 'test-jest-camaj-';
@@ -19,10 +20,10 @@ describe('Module Camaj', () => {
     // Injection dynamique de l'email admin pour cette suite.
     process.env.ADMIN_EMAILS = admin.email;
 
-    const resAdmin = await request(app).post('/api/v1/auth/register').send(admin);
+    const { verifyRes: resAdmin } = await registerAndVerify(admin);
     tokenAdmin = resAdmin.body.data.tokens.access_token;
 
-    const resUser = await request(app).post('/api/v1/auth/register').send(normal);
+    const { verifyRes: resUser } = await registerAndVerify(normal);
     tokenUser = resUser.body.data.tokens.access_token;
   });
 

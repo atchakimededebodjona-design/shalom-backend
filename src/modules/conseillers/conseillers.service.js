@@ -1,6 +1,21 @@
 const { query } = require('../../config/db');
 const { AppError } = require('../../middlewares/error.middleware');
 
+// Colonnes communes : le nom/email/avatar viennent toujours du compte SHALOM
+// lié (jamais dupliqués sur la ligne conseiller), pour rester synchronisés
+// avec le profil réel du membre.
+const SELECT_FIELDS = `
+  c.id, c.user_id, c.telephone, c.specialite, c.bio, c.is_active,
+  c.created_at, c.updated_at,
+  u.email,
+  p.display_name AS nom, p.avatar_url
+`;
+const JOINS = `
+  FROM conseillers c
+  JOIN users u ON u.id = c.user_id AND u.deleted_at IS NULL
+  JOIN profiles p ON p.user_id = c.user_id
+`;
+
 // =========================================================================
 // 1. Lister les conseillers
 // =========================================================================
@@ -10,26 +25,24 @@ const getConseillers = async (options = {}) => {
   const limit = parseInt(options.limit, 10) || 50;
   const offset = (page - 1) * limit;
 
-  let whereClause = 'WHERE deleted_at IS NULL';
+  let whereClause = 'WHERE c.deleted_at IS NULL';
   const params = [];
   let paramIdx = 1;
 
   if (options.is_active !== undefined) {
-    whereClause += ` AND is_active = $${paramIdx}`;
+    whereClause += ` AND c.is_active = $${paramIdx}`;
     params.push(options.is_active === 'true' || options.is_active === true);
     paramIdx++;
   }
 
   const countResult = await query(
-    `SELECT COUNT(*) AS total FROM conseillers ${whereClause}`,
+    `SELECT COUNT(*) AS total ${JOINS} ${whereClause}`,
     params
   );
 
   const dataResult = await query(
-    `SELECT *
-     FROM conseillers
-     ${whereClause}
-     ORDER BY nom ASC
+    `SELECT ${SELECT_FIELDS} ${JOINS} ${whereClause}
+     ORDER BY p.display_name ASC
      LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,
     [...params, limit, offset]
   );
@@ -47,7 +60,7 @@ const getConseillers = async (options = {}) => {
 
 const getConseillerById = async (id) => {
   const { rows } = await query(
-    `SELECT * FROM conseillers WHERE id = $1 AND deleted_at IS NULL`,
+    `SELECT ${SELECT_FIELDS} ${JOINS} WHERE c.id = $1 AND c.deleted_at IS NULL`,
     [id]
   );
   if (!rows[0]) {
@@ -57,19 +70,31 @@ const getConseillerById = async (id) => {
 };
 
 // =========================================================================
-// 3. Créer un conseiller
+// 3. Créer un conseiller — désigne un membre SHALOM existant comme conseiller
 // =========================================================================
 
 const createConseiller = async (data) => {
-  const { nom, email, telephone, specialite, bio, is_active } = data;
+  const { user_id, telephone, specialite, bio, is_active } = data;
+
+  const userCheck = await query('SELECT id FROM users WHERE id = $1 AND deleted_at IS NULL', [user_id]);
+  if (userCheck.rows.length === 0) {
+    throw new AppError('Membre introuvable', 404, 'USER_NOT_FOUND');
+  }
+
+  const existing = await query(
+    'SELECT id FROM conseillers WHERE user_id = $1 AND deleted_at IS NULL',
+    [user_id]
+  );
+  if (existing.rows.length > 0) {
+    throw new AppError('Ce membre est déjà désigné comme conseiller', 409, 'CONSEILLER_ALREADY_EXISTS');
+  }
 
   const { rows } = await query(
-    `INSERT INTO conseillers (nom, email, telephone, specialite, bio, is_active)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING *`,
+    `INSERT INTO conseillers (user_id, telephone, specialite, bio, is_active)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id`,
     [
-      nom,
-      email || null,
+      user_id,
       telephone || null,
       specialite || null,
       bio || null,
@@ -77,32 +102,30 @@ const createConseiller = async (data) => {
     ]
   );
 
-  return rows[0];
+  return getConseillerById(rows[0].id);
 };
 
 // =========================================================================
-// 4. Mettre à jour un conseiller
+// 4. Mettre à jour un conseiller (le membre désigné ne se change pas :
+//    supprimer puis recréer si l'admin s'est trompé de compte)
 // =========================================================================
 
 const updateConseiller = async (id, data) => {
   const existing = await getConseillerById(id);
 
-  const nom = data.nom !== undefined ? data.nom : existing.nom;
-  const email = data.email !== undefined ? data.email : existing.email;
   const telephone = data.telephone !== undefined ? data.telephone : existing.telephone;
   const specialite = data.specialite !== undefined ? data.specialite : existing.specialite;
   const bio = data.bio !== undefined ? data.bio : existing.bio;
   const is_active = data.is_active !== undefined ? data.is_active : existing.is_active;
 
-  const { rows } = await query(
+  await query(
     `UPDATE conseillers
-     SET nom = $1, email = $2, telephone = $3, specialite = $4, bio = $5, is_active = $6, updated_at = now()
-     WHERE id = $7 AND deleted_at IS NULL
-     RETURNING *`,
-    [nom, email, telephone, specialite, bio, is_active, id]
+     SET telephone = $1, specialite = $2, bio = $3, is_active = $4, updated_at = now()
+     WHERE id = $5 AND deleted_at IS NULL`,
+    [telephone, specialite, bio, is_active, id]
   );
 
-  return rows[0];
+  return getConseillerById(id);
 };
 
 // =========================================================================

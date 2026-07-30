@@ -1,8 +1,7 @@
 const { body, query } = require('express-validator');
 
 const createConseillerValidator = [
-  body('nom').notEmpty().withMessage('Le nom est requis').isString().trim().isLength({ max: 150 }),
-  body('email').optional({ checkFalsy: true }).isEmail().withMessage('E-mail invalide'),
+  body('user_id').isUUID().withMessage('Veuillez sélectionner un membre'),
   body('telephone').optional({ checkFalsy: true }).isString().trim().isLength({ max: 30 }),
   body('specialite').optional({ checkFalsy: true }).isString().trim().isLength({ max: 150 }),
   body('bio').optional({ checkFalsy: true }).isString().trim(),
@@ -10,8 +9,6 @@ const createConseillerValidator = [
 ];
 
 const updateConseillerValidator = [
-  body('nom').optional().isString().trim().isLength({ max: 150 }),
-  body('email').optional({ checkFalsy: true }).isEmail().withMessage('E-mail invalide'),
   body('telephone').optional({ checkFalsy: true }).isString().trim().isLength({ max: 30 }),
   body('specialite').optional({ checkFalsy: true }).isString().trim().isLength({ max: 150 }),
   body('bio').optional({ checkFalsy: true }).isString().trim(),

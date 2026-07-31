@@ -2,15 +2,20 @@
 // Middleware de limitation de débit (rate limiting) pour les routes sensibles
 
 const rateLimit = require('express-rate-limit');
+const env = require('../config/env');
 
 /**
  * Rate limiter pour les routes d'authentification (login, register, refresh)
- * Limite : 10 requêtes par fenêtre de 15 minutes par IP
- * Protège contre les attaques par force brute et le credential stuffing
+ * Limite : 10 requêtes par fenêtre de 15 minutes par IP en production.
+ * Protège contre les attaques par force brute et le credential stuffing.
+ * Relevée en dev/test (1000) car le proxy Next.js fait passer toutes les
+ * requêtes de tous les clients (navigateur, mobile, scripts) par la même IP
+ * côté Express — sans cette marge, un seul poste de dev épuise le quota de
+ * tout le monde en quelques allers-retours.
  */
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10,
+  max: env.NODE_ENV === 'production' ? 10 : 1000,
   standardHeaders: true, // Renvoie les headers RateLimit-* (standard IETF)
   legacyHeaders: false, // Désactive les headers X-RateLimit-*
   message: {

@@ -33,8 +33,12 @@ const addLike = async (userId, likeData) => {
       return false;
     }
 
-    // 2. Incrémenter le compteur selon le type et récupérer l'auteur
+    // 2. Incrémenter le compteur selon le type et récupérer l'auteur.
+    // On résout aussi postId pour le like d'un commentaire : reference_id
+    // doit toujours pointer vers le post (ce vers quoi la notification
+    // renvoie côté frontend), jamais vers le commentaire lui-même.
     let authorId = null;
+    let postId = likeable_type === 'post' ? likeable_id : null;
     if (likeable_type === 'post') {
       const postRes = await client.query(
         `UPDATE posts SET likes_count = likes_count + 1 WHERE id = $1 RETURNING author_id`,
@@ -43,17 +47,20 @@ const addLike = async (userId, likeData) => {
       if (postRes.rows.length > 0) authorId = postRes.rows[0].author_id;
     } else if (likeable_type === 'comment') {
       const commentRes = await client.query(
-        `SELECT author_id FROM comments WHERE id = $1`,
+        `SELECT author_id, post_id FROM comments WHERE id = $1`,
         [likeable_id]
       );
-      if (commentRes.rows.length > 0) authorId = commentRes.rows[0].author_id;
+      if (commentRes.rows.length > 0) {
+        authorId = commentRes.rows[0].author_id;
+        postId = commentRes.rows[0].post_id;
+      }
     }
 
     await client.query('COMMIT');
 
     // 3. Envoyer la notification (hors transaction pour éviter de bloquer)
     if (authorId && authorId !== userId) {
-      await NotificationService.createNotification(authorId, 'like', userId, likeable_id);
+      await NotificationService.createNotification(authorId, 'like', userId, postId);
     }
 
     return true;

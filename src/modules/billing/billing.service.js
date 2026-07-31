@@ -609,7 +609,7 @@ const renderInvoiceHtml = ({ invoice, items, business, client }) => {
   <button class="no-print" onclick="window.print()" style="float:right; padding:8px 14px;">🖨️ Imprimer</button>
   <div class="header">
     <div class="business">
-      ${business.logo_url ? `<img src="${business.logo_url}" alt="Logo" />` : ''}
+      ${business.logo_url ? `<img src="${business.logo_url.startsWith('http') ? business.logo_url : (process.env.PUBLIC_URL || 'http://localhost:5000') + (business.logo_url.startsWith('/') ? '' : '/') + business.logo_url}" alt="Logo" />` : ''}
       <div>
         <h1>${business.name}</h1>
         ${business.address ? `<p>${business.address}</p>` : ''}
@@ -619,7 +619,7 @@ const renderInvoiceHtml = ({ invoice, items, business, client }) => {
     </div>
     <div class="invoice-meta">
       <h2>Facture ${invoice.invoice_number}</h2>
-      <p><span class="status">${statusLabels[invoice.status] || invoice.status}</span></p>
+      <p><span class="status no-print">${statusLabels[invoice.status] || invoice.status}</span></p>
       <p>Émise le : ${new Date(invoice.issue_date).toLocaleDateString('fr-FR')}</p>
       ${invoice.due_date ? `<p>Échéance : ${new Date(invoice.due_date).toLocaleDateString('fr-FR')}</p>` : ''}
     </div>

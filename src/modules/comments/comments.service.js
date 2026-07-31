@@ -39,8 +39,10 @@ const addComment = async (postId, authorId, commentData) => {
     await client.query('COMMIT');
 
     // 3. Envoyer la notification (hors transaction)
+    // reference_id = l'ID du post (pas du commentaire) : c'est ce vers quoi
+    // la notification doit renvoyer côté frontend, cohérent avec 'like'.
     if (postAuthorId && postAuthorId !== authorId) {
-      await NotificationService.createNotification(postAuthorId, 'comment', authorId, newComment.id);
+      await NotificationService.createNotification(postAuthorId, 'comment', authorId, postId);
     }
 
     return newComment;

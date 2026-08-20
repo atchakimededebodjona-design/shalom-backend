@@ -2,6 +2,7 @@ const service = require('./ads.service');
 const { hasValidationErrors } = require('../../utils/validate');
 const { AppError } = require('../../middlewares/error.middleware');
 const env = require('../../config/env');
+const { isAdminEmail } = require('../../utils/admin');
 
 // =========================================================================
 // 1. Lister les publicités (Public filtré / Admin)
@@ -13,7 +14,7 @@ const listAds = async (req, res, next) => {
 
     // Seul un admin peut voir les publicités inactives. Les autres utilisateurs
     // ne voient que l'espace publicitaire réellement affiché sur le fil d'actualité.
-    if (!req.user || req.user.role !== 'admin') {
+    if (!req.user || !isAdminEmail(req.user.email)) {
       req.query.is_active = true;
     }
 
@@ -33,7 +34,7 @@ const getAd = async (req, res, next) => {
     const adId = req.params.id;
     const ad = await service.getAdById(adId);
 
-    if (!ad.is_active && (!req.user || req.user.role !== 'admin')) {
+    if (!ad.is_active && (!req.user || !isAdminEmail(req.user.email))) {
       throw new AppError('Publicité non disponible', 403);
     }
 

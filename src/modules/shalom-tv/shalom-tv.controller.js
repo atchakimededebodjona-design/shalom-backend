@@ -2,6 +2,7 @@ const service = require('./shalom-tv.service');
 const { hasValidationErrors } = require('../../utils/validate');
 const { AppError } = require('../../middlewares/error.middleware');
 const env = require('../../config/env');
+const { isAdminEmail } = require('../../utils/admin');
 
 // =========================================================================
 // 1. Lister les contenus (Public / Filtré)
@@ -12,7 +13,7 @@ const listContents = async (req, res, next) => {
     if (hasValidationErrors(req, res)) return;
 
     // Seul un admin peut voir les non-publiés. Par défaut, on force is_published = true pour les utilisateurs.
-    if (!req.user || req.user.role !== 'admin') {
+    if (!req.user || !isAdminEmail(req.user.email)) {
       req.query.is_published = true;
     }
 
@@ -33,7 +34,7 @@ const getContent = async (req, res, next) => {
     const content = await service.getContentById(contentId);
 
     // Vérifier si publié (sauf si admin)
-    if (!content.is_published && (!req.user || req.user.role !== 'admin')) {
+    if (!content.is_published && (!req.user || !isAdminEmail(req.user.email))) {
       throw new AppError('Contenu non disponible', 403);
     }
 

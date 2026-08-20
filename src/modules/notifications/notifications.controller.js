@@ -1,5 +1,6 @@
 const { validationResult } = require('express-validator');
 const notificationsService = require('./notifications.service');
+const { getPagination } = require('../../utils/pagination');
 
 exports.getNotifications = async (req, res) => {
   const errors = validationResult(req);
@@ -8,8 +9,7 @@ exports.getNotifications = async (req, res) => {
   }
 
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
+    const { page, limit } = getPagination(req.query);
 
     const data = await notificationsService.getNotifications(req.user.id, page, limit);
     res.json({

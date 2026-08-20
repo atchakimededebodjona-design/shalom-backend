@@ -2,7 +2,7 @@
 // Accès aux données du module Outils pratiques du quotidien :
 // dîme/offrandes, événements personnels, listes de tâches et convertisseur.
 
-const { query, pool } = require('../../config/db');
+const { query } = require('../../config/db');
 
 // =========================================================================
 //  Calculatrice de dîme / offrandes
@@ -228,22 +228,13 @@ const reorderTasks = async (listId, userId, orderedIds) => {
   );
   if (check.rows[0].n !== orderedIds.length) return null;
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    for (let i = 0; i < orderedIds.length; i += 1) {
-      await client.query(
-        `UPDATE tasks SET position = $1 WHERE id = $2 AND list_id = $3 AND user_id = $4`,
-        [i + 1, orderedIds[i], listId, userId]
-      );
-    }
-    await client.query('COMMIT');
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
+  const positions = orderedIds.map((_, i) => i + 1);
+  await query(
+    `UPDATE tasks AS t SET position = v.position
+     FROM (SELECT unnest($1::uuid[]) AS id, unnest($2::int[]) AS position) AS v
+     WHERE t.id = v.id AND t.list_id = $3 AND t.user_id = $4`,
+    [orderedIds, positions, listId, userId]
+  );
 
   const tasks = await query(
     `SELECT * FROM tasks WHERE list_id = $1 AND deleted_at IS NULL ORDER BY position ASC`,

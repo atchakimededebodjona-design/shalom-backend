@@ -37,6 +37,15 @@ const swaggerSpec = require('./config/swagger');
 // Initialisation de l'application Express
 const app = express();
 
+// En production, l'API tourne derrière un reverse proxy (Next.js) : sans ceci,
+// express-rate-limit et req.ip verraient l'IP du proxy pour tout le monde et
+// partageraient un seul quota entre tous les utilisateurs. `1` = fait confiance
+// au premier hop seulement (jamais `true`, qui laisserait forger X-Forwarded-For
+// pour contourner le rate limit).
+if (env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
+
 // --- Middlewares globaux ---
 
 // Sécurité : headers HTTP

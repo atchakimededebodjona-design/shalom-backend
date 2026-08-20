@@ -14,8 +14,8 @@ const registerSchema = [
     .normalizeEmail(),
 
   body('password')
-    .isLength({ min: 8 })
-    .withMessage('Le mot de passe doit contenir au moins 8 caractères')
+    .isLength({ min: 8, max: 128 })
+    .withMessage('Le mot de passe doit contenir entre 8 et 128 caractères')
     .matches(/[A-Z]/)
     .withMessage('Le mot de passe doit contenir au moins une majuscule')
     .matches(/[0-9]/)
@@ -64,8 +64,8 @@ const changePasswordSchema = [
     .withMessage('Le mot de passe actuel est requis'),
 
   body('new_password')
-    .isLength({ min: 8 })
-    .withMessage('Le nouveau mot de passe doit contenir au moins 8 caractères')
+    .isLength({ min: 8, max: 128 })
+    .withMessage('Le nouveau mot de passe doit contenir entre 8 et 128 caractères')
     .matches(/[A-Z]/)
     .withMessage('Le nouveau mot de passe doit contenir au moins une majuscule')
     .matches(/[0-9]/)

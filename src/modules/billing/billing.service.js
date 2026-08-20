@@ -196,13 +196,19 @@ const createInvoice = async (business, data) => {
     );
     const invoice = invoiceResult.rows[0];
 
-    for (const item of processedItems) {
-      await client.query(
-        `INSERT INTO invoice_items (invoice_id, description, quantity, unit_price, line_total, sort_order)
-         VALUES ($1,$2,$3,$4,$5,$6)`,
-        [invoice.id, item.description, item.quantity, item.unitPrice, item.lineTotal, item.sortOrder]
-      );
-    }
+    await client.query(
+      `INSERT INTO invoice_items (invoice_id, description, quantity, unit_price, line_total, sort_order)
+       SELECT $1, d, q, u, l, s
+       FROM unnest($2::text[], $3::numeric[], $4::numeric[], $5::numeric[], $6::int[]) AS t(d, q, u, l, s)`,
+      [
+        invoice.id,
+        processedItems.map((item) => item.description),
+        processedItems.map((item) => item.quantity),
+        processedItems.map((item) => item.unitPrice),
+        processedItems.map((item) => item.lineTotal),
+        processedItems.map((item) => item.sortOrder),
+      ]
+    );
 
     await client.query('COMMIT');
     invoice.items = processedItems;
@@ -561,6 +567,15 @@ const getInvoiceByShareToken = async (shareToken) =>
 const formatAmount = (amount, currency) =>
   `${Number(amount).toLocaleString('fr-FR')} ${currency}`;
 
+const escapeHtml = (value) =>
+  String(value ?? '').replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[char]));
+
 /**
  * Génère une page HTML autonome et imprimable pour une facture (utilisée par
  * la route privée et la route publique). Pas de dépendance PDF : l'impression
@@ -571,7 +586,7 @@ const renderInvoiceHtml = ({ invoice, items, business, client }) => {
   const statusLabels = { draft: 'Brouillon', partial: 'Partiellement payée', paid: 'Payée', overdue: 'En retard' };
   const rows = items.map((item) => `
     <tr>
-      <td>${item.description}</td>
+      <td>${escapeHtml(item.description)}</td>
       <td style="text-align:right">${Number(item.quantity)}</td>
       <td style="text-align:right">${formatAmount(item.unit_price, currency)}</td>
       <td style="text-align:right">${formatAmount(item.line_total, currency)}</td>
@@ -609,17 +624,17 @@ const renderInvoiceHtml = ({ invoice, items, business, client }) => {
   <button class="no-print" onclick="window.print()" style="float:right; padding:8px 14px;">🖨️ Imprimer</button>
   <div class="header">
     <div class="business">
-      ${business.logo_url ? `<img src="${business.logo_url.startsWith('http') ? business.logo_url : (process.env.PUBLIC_URL || 'http://localhost:5000') + (business.logo_url.startsWith('/') ? '' : '/') + business.logo_url}" alt="Logo" />` : ''}
+      ${business.logo_url ? `<img src="${escapeHtml(business.logo_url.startsWith('http') ? business.logo_url : (process.env.PUBLIC_URL || 'http://localhost:5000') + (business.logo_url.startsWith('/') ? '' : '/') + business.logo_url)}" alt="Logo" />` : ''}
       <div>
-        <h1>${business.name}</h1>
-        ${business.address ? `<p>${business.address}</p>` : ''}
-        ${business.phone ? `<p>Tél : ${business.phone}</p>` : ''}
-        ${business.tax_id ? `<p>NIF/RCCM : ${business.tax_id}</p>` : ''}
+        <h1>${escapeHtml(business.name)}</h1>
+        ${business.address ? `<p>${escapeHtml(business.address)}</p>` : ''}
+        ${business.phone ? `<p>Tél : ${escapeHtml(business.phone)}</p>` : ''}
+        ${business.tax_id ? `<p>NIF/RCCM : ${escapeHtml(business.tax_id)}</p>` : ''}
       </div>
     </div>
     <div class="invoice-meta">
-      <h2>Facture ${invoice.invoice_number}</h2>
-      <p><span class="status no-print">${statusLabels[invoice.status] || invoice.status}</span></p>
+      <h2>Facture ${escapeHtml(invoice.invoice_number)}</h2>
+      <p><span class="status no-print">${escapeHtml(statusLabels[invoice.status] || invoice.status)}</span></p>
       <p>Émise le : ${new Date(invoice.issue_date).toLocaleDateString('fr-FR')}</p>
       ${invoice.due_date ? `<p>Échéance : ${new Date(invoice.due_date).toLocaleDateString('fr-FR')}</p>` : ''}
     </div>
@@ -627,10 +642,10 @@ const renderInvoiceHtml = ({ invoice, items, business, client }) => {
 
   <div class="client">
     <h3>Facturé à</h3>
-    <p><strong>${client.name}</strong></p>
-    ${client.address ? `<p>${client.address}</p>` : ''}
-    ${client.phone ? `<p>${client.phone}</p>` : ''}
-    ${client.email ? `<p>${client.email}</p>` : ''}
+    <p><strong>${escapeHtml(client.name)}</strong></p>
+    ${client.address ? `<p>${escapeHtml(client.address)}</p>` : ''}
+    ${client.phone ? `<p>${escapeHtml(client.phone)}</p>` : ''}
+    ${client.email ? `<p>${escapeHtml(client.email)}</p>` : ''}
   </div>
 
   <table>
@@ -647,7 +662,7 @@ const renderInvoiceHtml = ({ invoice, items, business, client }) => {
     <div><span>Solde dû</span><span>${formatAmount(invoice.total - invoice.discount_amount - invoice.amount_paid, currency)}</span></div>
   </div>
 
-  ${invoice.notes ? `<p><strong>Notes :</strong> ${invoice.notes}</p>` : ''}
+  ${invoice.notes ? `<p><strong>Notes :</strong> ${escapeHtml(invoice.notes)}</p>` : ''}
 
   <div class="footer">Facture générée via Reçu+ — SHALOM</div>
 </body>

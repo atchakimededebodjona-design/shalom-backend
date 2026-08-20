@@ -42,13 +42,23 @@ const identifier = (buf) => {
     return { mime: 'image/gif', ext: '.gif' };
   }
 
-  // WEBP : conteneur RIFF avec la marque WEBP à l'offset 8.
-  // Un autre RIFF (AVI, WAV...) n'est pas une image/vidéo autorisée → refusé.
+  // RIFF : WEBP (image) ou WAVE (audio) selon la marque à l'offset 8.
   if (matchesAscii(buf, 0, 'RIFF')) {
     if (matchesAscii(buf, 8, 'WEBP')) {
       return { mime: 'image/webp', ext: '.webp' };
     }
+    if (matchesAscii(buf, 8, 'WAVE')) {
+      return { mime: 'audio/wav', ext: '.wav' };
+    }
     return null;
+  }
+
+  // MP3 : en-tête ID3v2, ou en-tête de frame MPEG brut (sans tag ID3).
+  if (matchesAscii(buf, 0, 'ID3')) {
+    return { mime: 'audio/mpeg', ext: '.mp3' };
+  }
+  if (buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0 && (buf[1] & 0x06) !== 0x00) {
+    return { mime: 'audio/mpeg', ext: '.mp3' };
   }
 
   // WebM (en-tête EBML)
@@ -62,6 +72,9 @@ const identifier = (buf) => {
     const brand = buf.subarray(8, 12).toString('latin1');
     if (QUICKTIME_BRANDS.has(brand)) {
       return { mime: 'video/quicktime', ext: '.mov' };
+    }
+    if (brand === 'M4A ') {
+      return { mime: 'audio/mp4', ext: '.m4a' };
     }
     return { mime: 'video/mp4', ext: '.mp4' };
   }

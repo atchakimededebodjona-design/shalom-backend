@@ -70,14 +70,35 @@ const getGroups = async (limit, offset, search) => {
 };
 
 /**
- * Récupérer un groupe par ID
+ * Vérifie si l'utilisateur est membre actif d'un groupe (peu importe le rôle).
  */
-const getGroupById = async (groupId) => {
+const isActiveMember = async (groupId, userId) => {
+  if (!userId) return false;
+  const result = await query(
+    `SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2 AND status = 'actif'`,
+    [groupId, userId]
+  );
+  return result.rowCount > 0;
+};
+
+/**
+ * Récupérer un groupe par ID.
+ * Un groupe non public (prive/hidden) n'est renvoyé qu'à ses membres actifs —
+ * sinon son UUID suffirait à en lire la description/horaires/lieu.
+ */
+const getGroupById = async (groupId, userId) => {
   const result = await query(
     `SELECT * FROM groups WHERE id = $1 AND deleted_at IS NULL`,
     [groupId]
   );
-  return result.rows[0] || null;
+  const group = result.rows[0];
+  if (!group) return null;
+
+  if (group.visibility !== 'public' && !(await isActiveMember(groupId, userId))) {
+    return null;
+  }
+
+  return group;
 };
 
 /**
@@ -304,9 +325,21 @@ const updateMemberStatus = async (groupId, adminId, targetUserId, newStatus) => 
 };
 
 /**
- * Lister les membres d'un groupe (actifs uniquement)
+ * Lister les membres d'un groupe (actifs uniquement).
+ * Un groupe non public ne dévoile ses membres qu'à ses propres membres actifs.
  */
-const getMembers = async (groupId, limit, offset) => {
+const getMembers = async (groupId, userId, limit, offset) => {
+  const groupResult = await query(
+    `SELECT visibility FROM groups WHERE id = $1 AND deleted_at IS NULL`,
+    [groupId]
+  );
+  const group = groupResult.rows[0];
+  if (!group) return null;
+
+  if (group.visibility !== 'public' && !(await isActiveMember(groupId, userId))) {
+    return null;
+  }
+
   const countResult = await query(
     `SELECT count(*) FROM group_members WHERE group_id = $1 AND status = 'actif'`,
     [groupId]

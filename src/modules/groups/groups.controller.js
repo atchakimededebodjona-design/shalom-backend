@@ -43,8 +43,8 @@ const getGroupById = async (req, res, next) => {
   try {
     if (hasValidationErrors(req, res)) return;
     const { id } = req.params;
-    const group = await groupsService.getGroupById(id);
-    
+    const group = await groupsService.getGroupById(id, req.user.id);
+
     if (!group) {
       throw new AppError('Groupe introuvable ou supprimé', 404, 'GROUP_NOT_FOUND');
     }
@@ -137,8 +137,12 @@ const getMembers = async (req, res, next) => {
     if (hasValidationErrors(req, res)) return;
     const { id } = req.params;
     const { page, limit, offset } = getPagination(req.query);
-    
-    const { members, total } = await groupsService.getMembers(id, limit, offset);
+
+    const result = await groupsService.getMembers(id, req.user.id, limit, offset);
+    if (!result) {
+      throw new AppError('Groupe introuvable ou supprimé', 404, 'GROUP_NOT_FOUND');
+    }
+    const { members, total } = result;
     const pagination = formatPagination(page, limit, total);
     
     return res.status(200).json({

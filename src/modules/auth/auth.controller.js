@@ -11,6 +11,7 @@ const authService = require('./auth.service');
 const profilesService = require('../profiles/profiles.service');
 const ambassadorService = require('../ambassador/ambassador.service');
 const { sendVerificationEmail } = require('../../utils/email');
+const { pool } = require('../../config/db');
 
 /**
  * Génère un code de vérification à 6 chiffres.
@@ -93,7 +94,7 @@ const register = async (req, res, next) => {
     // Vérifier les erreurs de validation
     if (hasValidationErrors(req, res)) return;
 
-    const { email, password, display_name } = req.body;
+    const { email, password, display_name, referral_code } = req.body;
 
     // Vérifier si l'email existe déjà
     const existingUser = await authService.findUserByEmail(email);
@@ -103,6 +104,17 @@ const register = async (req, res, next) => {
         409,
         'EMAIL_ALREADY_EXISTS'
       );
+    }
+
+    // Le code de parrainage est validé AVANT toute création de compte : un
+    // code fourni mais invalide/inactif est rejeté proprement (400), pour ne
+    // jamais laisser un utilisateur créé avec un parrainage silencieusement
+    // ignoré. Absent de la requête, l'inscription se poursuit normalement.
+    if (referral_code) {
+      const referringAmbassador = await ambassadorService.findActiveAmbassadorByReferralCode(referral_code);
+      if (!referringAmbassador) {
+        throw new AppError('Code de parrainage invalide ou inactif', 400, 'INVALID_REFERRAL_CODE');
+      }
     }
 
     // Hasher le mot de passe
@@ -117,6 +129,26 @@ const register = async (req, res, next) => {
     // Inscription automatique au programme ambassadeur dès l'inscription
     await ambassadorService.joinProgram(user.id);
     profile.is_ambassador = true; // Pour la réponse json
+
+    // Enregistrement du parrainage : effet secondaire best-effort après la
+    // création du compte. Le code a déjà été validé ci-dessus, donc cet appel
+    // devrait toujours réussir ; s'il échoue malgré tout (ex: l'ambassadeur a
+    // été suspendu entre-temps), on journalise sans jamais faire échouer une
+    // inscription dont le compte est déjà créé (cf. recordReferral, qui
+    // ignore lui-même silencieusement un code devenu invalide).
+    if (referral_code) {
+      const referralClient = await pool.connect();
+      try {
+        await referralClient.query('BEGIN');
+        await ambassadorService.recordReferral(user.id, referral_code, referralClient);
+        await referralClient.query('COMMIT');
+      } catch (referralError) {
+        await referralClient.query('ROLLBACK');
+        console.error('Erreur lors de l\'enregistrement du parrainage (inscription non affectée) :', referralError);
+      } finally {
+        referralClient.release();
+      }
+    }
 
     // L'inscription n'est pas encore "réussie" au sens plein : aucun token
     // n'est émis tant que l'email n'est pas vérifié par le code envoyé.

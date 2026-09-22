@@ -27,6 +27,17 @@ const registerSchema = [
     .withMessage('Le nom d\'affichage est requis')
     .isLength({ min: 2, max: 100 })
     .withMessage('Le nom d\'affichage doit contenir entre 2 et 100 caractères'),
+
+  // Optionnel : code de parrainage ambassadeur. Le format n'est pas imposé
+  // ici (il évolue avec le programme Ambassadeur) — seule son existence
+  // réelle est vérifiée côté service (findActiveAmbassadorByReferralCode),
+  // source unique de vérité sur ce qui constitue un code valide.
+  body('referral_code')
+    .optional({ checkFalsy: true })
+    .trim()
+    .isString()
+    .isLength({ max: 20 })
+    .withMessage('Code de parrainage invalide'),
 ];
 
 /**

@@ -308,7 +308,9 @@ describe('Module Ambassadeur', () => {
         .get('/api/v1/ambassador/admin/list')
         .set(auth(tokenA));
       expect(res.statusCode).toBe(403);
-      expect(res.body.code).toBe('FORBIDDEN');
+      // Harmonisé sur le middleware requireAdmin partagé (admin.middleware.js),
+      // comme les autres modules admin (ads, shalom-tv, conseillers, camaj...).
+      expect(res.body.code).toBe('FORBIDDEN_ADMIN_ONLY');
     });
 
     it('refuse l\'approbation de commission pour un non-admin (403)', async () => {
@@ -316,6 +318,25 @@ describe('Module Ambassadeur', () => {
         .patch(`/api/v1/ambassador/admin/commissions/${commissionId}`)
         .set(auth(tokenA));
       expect(res.statusCode).toBe(403);
+    });
+
+    it("refuse l'accès à la liste admin sans authentification (401)", async () => {
+      const res = await request(app).get('/api/v1/ambassador/admin/list');
+      expect(res.statusCode).toBe(401);
+    });
+
+    it('autorise un admin (ADMIN_EMAILS) à lister les ambassadeurs (200)', async () => {
+      const previousAdminEmails = process.env.ADMIN_EMAILS;
+      process.env.ADMIN_EMAILS = userA.email;
+      try {
+        const res = await request(app)
+          .get('/api/v1/ambassador/admin/list')
+          .set(auth(tokenA));
+        expect(res.statusCode).toBe(200);
+        expect(res.body.success).toBe(true);
+      } finally {
+        process.env.ADMIN_EMAILS = previousAdminEmails;
+      }
     });
   });
 });

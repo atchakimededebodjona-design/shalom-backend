@@ -349,24 +349,39 @@ const listReferrals = async (userId, options = {}) => {
 };
 
 /**
+ * Recherche l'ambassadeur actif correspondant à un code de parrainage.
+ * Utilisé à la fois par recordReferral et par la validation du code lors de
+ * l'inscription (auth.controller.js) — source unique de vérité sur ce qui
+ * constitue un code "valide".
+ * @param {string} referralCode
+ * @param {object} [db] - connexion à utiliser (pool par défaut, ou un client de transaction)
+ * @returns {Promise<{id: string, user_id: string}|null>}
+ */
+const findActiveAmbassadorByReferralCode = async (referralCode, db = { query }) => {
+  const { rows } = await db.query(
+    `SELECT id, user_id FROM ambassador_profiles
+     WHERE referral_code = $1 AND status = 'active' AND deleted_at IS NULL`,
+    [referralCode]
+  );
+  return rows[0] || null;
+};
+
+/**
  * Enregistrer un parrainage lors de l'inscription d'un utilisateur
- * (appelé depuis auth.service.js au moment du register)
+ * (appelé depuis auth.controller.js au moment du register, après validation
+ * préalable du code par findActiveAmbassadorByReferralCode)
  * @param {string} referredUserId - L'ID de l'utilisateur nouvellement inscrit
  * @param {string} referralCode   - Le code de parrainage utilisé
  * @param {object} clientPg       - Client de connexion PG (transaction parente)
  * @returns {Promise<void>}
  */
 const recordReferral = async (referredUserId, referralCode, clientPg) => {
-  // Trouver l'ambassadeur correspondant au code
-  const { rows } = await clientPg.query(
-    `SELECT id, user_id FROM ambassador_profiles
-     WHERE referral_code = $1 AND status = 'active' AND deleted_at IS NULL`,
-    [referralCode]
-  );
-
-  if (rows.length === 0) return; // Code invalide ou ambassadeur inactif → on ignore silencieusement
-
-  const ambassador = rows[0];
+  // Retrouve l'ambassadeur via la même logique que la validation à
+  // l'inscription — re-vérifié ici au cas où son statut aurait changé entre
+  // la validation et cet appel (fenêtre très étroite, mais sans incidence :
+  // on ignore silencieusement plutôt que d'échouer l'inscription déjà créée).
+  const ambassador = await findActiveAmbassadorByReferralCode(referralCode, clientPg);
+  if (!ambassador) return; // Code invalide ou ambassadeur inactif → on ignore silencieusement
 
   // Éviter l'auto-parrainage
   if (ambassador.user_id === referredUserId) return;
@@ -447,14 +462,27 @@ const createCommissionForSubscription = async (
 
     const currentMonth = new Date().toISOString().slice(0, 7);
 
-    // 3. Créer la commission
+    // 3. Créer la commission — idempotent sur subscription_id (index unique
+    // partiel, migration 033) : si cette fonction est appelée deux fois pour
+    // le même abonnement (retry, concurrence), la seconde tentative ne crée
+    // rien et on renvoie la commission déjà existante au lieu d'en dupliquer une.
     const commResult = await client.query(
       `INSERT INTO ambassador_commissions
          (ambassador_id, referred_user_id, subscription_id, type, amount, rate_applied, status, period_month)
        VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7)
+       ON CONFLICT (subscription_id) WHERE subscription_id IS NOT NULL DO NOTHING
        RETURNING *`,
       [ambassador_id, subscribedUserId, subscriptionId, eventType, commissionAmount, rate, currentMonth]
     );
+
+    if (commResult.rows.length === 0) {
+      const existing = await client.query(
+        `SELECT * FROM ambassador_commissions WHERE subscription_id = $1`,
+        [subscriptionId]
+      );
+      await client.query('COMMIT');
+      return existing.rows[0] || null;
+    }
 
     const commission = commResult.rows[0];
 
@@ -1079,7 +1107,8 @@ module.exports = {
   // Parrainages
   getReferralLink,
   listReferrals,
-  recordReferral,          // Appelé par auth.service.js
+  findActiveAmbassadorByReferralCode, // Appelé par auth.controller.js (validation à l'inscription)
+  recordReferral,          // Appelé par auth.controller.js
   // Commissions
   createCommissionForSubscription, // Appelé par billing/subscription service
   approveCommission,

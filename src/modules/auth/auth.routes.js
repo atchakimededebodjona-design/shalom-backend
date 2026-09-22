@@ -40,9 +40,14 @@ const router = Router();
  *                 type: string
  *               display_name:
  *                 type: string
+ *               referral_code:
+ *                 type: string
+ *                 description: "Code de parrainage ambassadeur (optionnel), ex: SHLM-AB123"
  *     responses:
  *       201:
  *         description: Utilisateur créé avec succès
+ *       400:
+ *         description: Code de parrainage invalide ou inactif
  *       409:
  *         description: L'email est déjà utilisé
  */

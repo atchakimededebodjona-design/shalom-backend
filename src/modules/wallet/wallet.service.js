@@ -16,14 +16,281 @@ const crypto = require('crypto');
 const { pool, query } = require('../../config/db');
 const { AppError } = require('../../middlewares/error.middleware');
 
-// Secrets HMAC par provider — à renseigner dans .env lors de l'intégration réelle.
-// (Laissés en process.env direct tant que les providers ne sont pas branchés.)
+// Secret HMAC générique — utilisé UNIQUEMENT par le chemin STUB (FedaPay,
+// non encore intégré). CinetPay a son propre mécanisme réel documenté
+// (X-TOKEN, cf. computeCinetpayXToken plus bas), distinct de ce stub générique.
 const PROVIDER_SECRETS = {
-  cinetpay: process.env.CINETPAY_WEBHOOK_SECRET,
   fedapay: process.env.FEDAPAY_WEBHOOK_SECRET,
 };
 
 const SUPPORTED_PROVIDERS = ['cinetpay', 'fedapay'];
+
+// Valeur générique attendue dans le webhook pour signaler un paiement réussi
+// (⚠️ STUB : le nom du champ et la valeur réels dépendent du provider — cf.
+// normalizeProviderPayload dans wallet.controller.js).
+const PAYMENT_STATUS_SUCCESS = 'success';
+
+// =========================================================================
+//  CinetPay — intégration réelle (Checkout API), Phase 4C
+//
+//  Documentation officielle consultée (via recherche — accès direct à
+//  docs.cinetpay.com indisponible depuis cet environnement, résultats
+//  recoupés sur plusieurs requêtes indépendantes, cohérents entre eux) :
+//    - Initialisation : https://docs.cinetpay.com/api/1.0-fr/checkout/initialisation
+//    - Notification    : https://docs.cinetpay.com/api/1.0-fr/checkout/notification
+//    - Vérification    : https://docs.cinetpay.com/api/1.0-fr/checkout/verification
+//    - X-TOKEN HMAC     : https://docs.cinetpay.com/api/1.0-en/checkout/hmac
+//
+//  Fait documenté central (cité dans la doc officielle) : CinetPay ne
+//  transmet PAS le statut réel dans la notification, précisément pour des
+//  raisons de sécurité — un appel serveur à l'API de vérification est
+//  OBLIGATOIRE avant de considérer un paiement comme réussi. C'est la
+//  garantie centrale de cette intégration (cf. reconcileCinetpayNotification).
+// =========================================================================
+
+const CINETPAY_API_KEY = process.env.CINETPAY_API_KEY;
+const CINETPAY_SITE_ID = process.env.CINETPAY_SITE_ID;
+// Clé secrète marchande — sert à calculer/vérifier le X-TOKEN HMAC de la
+// notification (mécanisme distinct de l'apikey, cf. doc HMAC ci-dessus).
+const CINETPAY_SECRET_KEY = process.env.CINETPAY_SECRET_KEY;
+
+const CINETPAY_INIT_URL = 'https://api-checkout.cinetpay.com/v2/payment';
+const CINETPAY_CHECK_URL = 'https://api-checkout.cinetpay.com/v2/payment/check';
+const CINETPAY_HTTP_TIMEOUT_MS = 15000;
+
+// Ordre de concaténation documenté pour le calcul du X-TOKEN (HMAC-SHA256,
+// clé = CINETPAY_SECRET_KEY) — cf. doc HMAC ci-dessus.
+const CINETPAY_HMAC_FIELDS = [
+  'cpm_site_id', 'cpm_trans_id', 'cpm_trans_date', 'cpm_amount', 'cpm_currency',
+  'signature', 'payment_method', 'cel_phone_num', 'cpm_phone_prefixe',
+  'cpm_language', 'cpm_version', 'cpm_payment_config', 'cpm_page_action',
+  'cpm_custom', 'cpm_designation', 'cpm_error_message',
+];
+
+/**
+ * Calcule le X-TOKEN attendu pour un corps de notification CinetPay.
+ * @param {object} body - req.body de la notification (champs cpm_*)
+ * @returns {string|null} hex HMAC-SHA256, ou null si le secret n'est pas configuré
+ */
+const computeCinetpayXToken = (body) => {
+  if (!CINETPAY_SECRET_KEY) return null;
+  const data = CINETPAY_HMAC_FIELDS.map((field) => (body[field] !== undefined && body[field] !== null ? String(body[field]) : '')).join('');
+  return crypto.createHmac('sha256', CINETPAY_SECRET_KEY).update(data).digest('hex');
+};
+
+/**
+ * Vérifie le X-TOKEN d'une notification CinetPay. Fail-closed : sans
+ * CINETPAY_SECRET_KEY configurée, ou en cas de désaccord, la notification
+ * est rejetée — même politique que verifyWebhookSignature pour les autres
+ * providers (un webhook est une route publique).
+ * @param {object} body
+ * @param {string} xToken - header x-token reçu
+ * @returns {boolean}
+ */
+const verifyCinetpayXToken = (body, xToken) => {
+  const expected = computeCinetpayXToken(body);
+  if (!expected) {
+    console.error('[wallet][cinetpay] ❌ CINETPAY_SECRET_KEY absente — notification REJETÉE.');
+    return false;
+  }
+  try {
+    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(xToken || ''));
+  } catch (_) {
+    return false;
+  }
+};
+
+/**
+ * Appelle l'API CinetPay avec gestion explicite des erreurs réseau/HTTP —
+ * jamais d'exception non contrôlée : les appelants reçoivent soit une
+ * réponse exploitable, soit une AppError explicite (jamais un crédit "par
+ * défaut" en cas d'échec de la vérification).
+ * @param {string} url
+ * @param {object} body
+ * @returns {Promise<object>} le corps JSON de la réponse CinetPay
+ */
+const callCinetpayApi = async (url, body) => {
+  let response;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), CINETPAY_HTTP_TIMEOUT_MS);
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch (networkError) {
+    throw new AppError(
+      `Impossible de contacter CinetPay (${networkError.name === 'AbortError' ? 'timeout' : networkError.message})`,
+      502,
+      'CINETPAY_UNREACHABLE'
+    );
+  }
+
+  let data;
+  try {
+    data = await response.json();
+  } catch (_) {
+    throw new AppError('Réponse CinetPay invalide (JSON illisible)', 502, 'CINETPAY_INVALID_RESPONSE');
+  }
+
+  if (!response.ok) {
+    throw new AppError(
+      `CinetPay a répondu ${response.status} (${data?.message || 'erreur inconnue'})`,
+      502,
+      'CINETPAY_HTTP_ERROR'
+    );
+  }
+  return data;
+};
+
+/**
+ * Initie un paiement réel via l'API Checkout CinetPay.
+ *
+ * Point clé (Étape 6) : `transaction_id` est choisi PAR SHALOM (pas assigné
+ * par CinetPay — leur réponse d'initialisation ne renvoie que
+ * payment_token/payment_url, jamais un identifiant différent). On y place
+ * directement `wallet_topup_requests.reference` : CinetPay renvoie cette
+ * même valeur tel quel dans `cpm_trans_id` à la notification, ce qui donne
+ * un lien déterministe CinetPay ↔ SHALOM sans avoir besoin d'un champ
+ * "custom"/metadata séparé.
+ *
+ * @param {{reference: string, amount: number, currency: string, userId: string}} p
+ * @returns {Promise<{payment_url: string, payment_token: string, provider_tx_id: string}>}
+ */
+const initiateCinetpayPayment = async ({ reference, amount, currency }) => {
+  if (!CINETPAY_API_KEY || !CINETPAY_SITE_ID) {
+    throw new AppError('Intégration CinetPay non configurée (CINETPAY_API_KEY / CINETPAY_SITE_ID manquants)', 500, 'CINETPAY_NOT_CONFIGURED');
+  }
+
+  const data = await callCinetpayApi(CINETPAY_INIT_URL, {
+    apikey: CINETPAY_API_KEY,
+    site_id: CINETPAY_SITE_ID,
+    transaction_id: reference,
+    amount,
+    currency,
+    description: 'Rechargement portefeuille SHALOM',
+    notify_url: `${process.env.PUBLIC_URL}/api/v1/wallet/webhook/cinetpay`,
+    return_url: `${process.env.FRONTEND_URL}/wallet/topup/return`,
+    channels: 'ALL',
+  });
+
+  if (!data?.data?.payment_url || !data?.data?.payment_token) {
+    throw new AppError(`CinetPay n'a pas renvoyé d'URL de paiement (${data?.message || 'réponse incomplète'})`, 502, 'CINETPAY_INVALID_RESPONSE');
+  }
+
+  return {
+    payment_url: data.data.payment_url,
+    payment_token: data.data.payment_token,
+    provider_tx_id: reference, // = transaction_id envoyé, CinetPay ne renvoie pas d'ID distinct
+  };
+};
+
+/**
+ * Interroge l'API de vérification CinetPay pour connaître le statut RÉEL
+ * d'une transaction — jamais déduit de la notification seule (cf. en-tête
+ * de section : c'est le point central de sécurité de cette intégration).
+ * @param {string} transactionId
+ * @returns {Promise<{status: string, amount: number, currency: string, raw: object}>}
+ */
+const verifyCinetpayTransaction = async (transactionId) => {
+  if (!CINETPAY_API_KEY || !CINETPAY_SITE_ID) {
+    throw new AppError('Intégration CinetPay non configurée (CINETPAY_API_KEY / CINETPAY_SITE_ID manquants)', 500, 'CINETPAY_NOT_CONFIGURED');
+  }
+
+  const data = await callCinetpayApi(CINETPAY_CHECK_URL, {
+    apikey: CINETPAY_API_KEY,
+    site_id: CINETPAY_SITE_ID,
+    transaction_id: transactionId,
+  });
+
+  if (!data?.data?.status) {
+    throw new AppError(`Réponse de vérification CinetPay incomplète (${data?.message || 'statut absent'})`, 502, 'CINETPAY_INVALID_RESPONSE');
+  }
+
+  return {
+    status: data.data.status, // ACCEPTED | REFUSED | PENDING | INITIATED | EXPIRED | UNKNOWN
+    amount: Number(data.data.amount),
+    currency: data.data.currency,
+    raw: data,
+  };
+};
+
+// Statuts CinetPay documentés (endpoint de vérification) → statut de
+// paiement générique déjà utilisé par processProviderWebhook. PENDING et
+// INITIATED ne sont ni un succès ni un échec définitif : on n'agit pas
+// encore (la notification pourra revenir plus tard avec un statut final).
+const CINETPAY_STATUS_MAP = {
+  ACCEPTED: PAYMENT_STATUS_SUCCESS,
+  REFUSED: 'failed',
+  EXPIRED: 'failed',
+  UNKNOWN: 'failed',
+  PENDING: 'pending',
+  INITIATED: 'pending',
+};
+
+/**
+ * Réconcilie une notification CinetPay reçue sur /webhook/cinetpay.
+ *
+ * Ordre des opérations (Étape 8/9) :
+ *   1. Retrouver la demande de recharge par référence (= cpm_trans_id) —
+ *      si introuvable, on s'arrête là (aucun appel CinetPay inutile).
+ *   2. Vérifier le paiement auprès de CinetPay (jamais confiance au webhook seul).
+ *   3. Ne créditer que si CinetPay confirme ACCEPTED, avec le montant/devise
+ *      qu'IL renvoie (jamais ceux du webhook) — la correspondance avec le
+ *      montant/devise ATTENDUS (wallet_topup_requests) reste vérifiée par
+ *      processProviderWebhook, inchangé depuis la Phase 4B.
+ *
+ * @param {string} cpmTransId - cpm_trans_id reçu dans la notification
+ * @returns {Promise<{duplicate:boolean, rejected?:boolean, reason?:string, transaction?:object, balance?:string}>}
+ */
+const reconcileCinetpayNotification = async (cpmTransId) => {
+  const topupRes = await query('SELECT * FROM wallet_topup_requests WHERE reference = $1', [cpmTransId]);
+  const topupRequest = topupRes.rows[0];
+  if (!topupRequest) {
+    return { duplicate: false, rejected: true, reason: 'REFERENCE_NOT_FOUND' };
+  }
+
+  // Idempotence locale AVANT l'appel réseau : une notification déjà
+  // traitée (ou une demande déjà close) n'a pas besoin de re-solliciter
+  // l'API CinetPay — processProviderWebhook le déciderait de toute façon,
+  // mais autant éviter l'appel externe inutile.
+  if (topupRequest.status !== 'pending') {
+    return {
+      duplicate: topupRequest.status === 'completed',
+      rejected: topupRequest.status !== 'completed',
+      reason: topupRequest.status === 'completed' ? undefined : `TOPUP_ALREADY_${topupRequest.status.toUpperCase()}`,
+    };
+  }
+
+  const verification = await verifyCinetpayTransaction(cpmTransId);
+  const paymentStatus = CINETPAY_STATUS_MAP[verification.status] || 'failed';
+
+  if (paymentStatus === 'pending') {
+    // Ni succès ni échec définitif : on ne touche à rien, la notification
+    // reviendra (CinetPay peut notifier plusieurs fois, cf. documentation).
+    return { duplicate: false, rejected: true, reason: `CINETPAY_STATUS_${verification.status}` };
+  }
+
+  return processProviderWebhook({
+    provider: 'cinetpay',
+    provider_tx_id: cpmTransId,
+    raw_payload: verification.raw,
+    userId: topupRequest.user_id,
+    amount: verification.amount,
+    currency: verification.currency,
+    direction: 'credit',
+    internalReference: cpmTransId,
+    paymentStatus,
+    source: 'topup',
+    description: 'Rechargement CinetPay',
+  });
+};
 
 // =========================================================================
 //  Helpers internes (utilisés à l'intérieur d'une transaction déjà ouverte)
@@ -295,8 +562,20 @@ const reverseTransaction = async (transactionId, userId, reason) => {
  * Phase 1 : journalise le payload brut (provider_transactions) dans sa PROPRE
  *   transaction, committée immédiatement — l'événement n'est jamais perdu.
  *   L'unicité (provider, provider_tx_id) garantit qu'on ne le journalise qu'une fois.
- * Phase 2 : verrouille le portefeuille, applique le crédit/débit, puis réconcilie
- *   (status='processed', wallet_transaction_id renseigné).
+ * Phase 2, si `internalReference` est fourni (recharge initiée via
+ *   initiateTopup/createTopupRequest) : verrouille la demande de recharge
+ *   correspondante (wallet_topup_requests) DANS LA MÊME transaction que le
+ *   crédit, et vérifie AVANT tout crédit que le webhook correspond bien à ce
+ *   qui était réellement attendu — référence trouvée, demande encore
+ *   'pending', même utilisateur, même montant, même devise. Tout écart est
+ *   refusé (aucun crédit) et journalisé (`provider_transactions.status =
+ *   'ignored'`), jamais crédité "au mieux". Sans `internalReference` (aucune
+ *   demande à vérifier), le webhook est rejeté pour la même raison qu'une
+ *   référence introuvable : on ne crédite jamais un montant dont on n'a
+ *   aucune trace de demande préalable.
+ * Puis : verrouille le portefeuille, applique le crédit/débit, et réconcilie
+ *   (status='processed', wallet_transaction_id renseigné, ainsi que la
+ *   demande de recharge le cas échéant).
  *
  * Un webhook déjà 'processed' → no-op idempotent. Un webhook 'received'/'failed'
  * (Phase 2 précédemment échouée) est retraité.
@@ -307,13 +586,16 @@ const reverseTransaction = async (transactionId, userId, reason) => {
  * @param {object} p.raw_payload
  * @param {string} p.userId
  * @param {number} p.amount
+ * @param {string} [p.currency='XOF']
  * @param {'credit'|'debit'} p.direction
+ * @param {string|null} [p.internalReference] - référence wallet_topup_requests.reference attendue dans le payload
+ * @param {string} [p.paymentStatus='success'] - statut du paiement signalé par le provider
  * @param {string} [p.source]
  * @param {string} [p.reference_type]
  * @param {string} [p.reference_id]
  * @param {string} [p.category_id]
  * @param {string} [p.description]
- * @returns {Promise<{duplicate: boolean, transaction?: object, balance?: string, provider_transaction?: object}>}
+ * @returns {Promise<{duplicate: boolean, rejected?: boolean, reason?: string, transaction?: object, balance?: string, provider_transaction?: object}>}
  */
 const processProviderWebhook = async ({
   provider,
@@ -321,7 +603,10 @@ const processProviderWebhook = async ({
   raw_payload,
   userId,
   amount,
+  currency = 'XOF',
   direction,
+  internalReference = null,
+  paymentStatus = PAYMENT_STATUS_SUCCESS,
   source,
   reference_type,
   reference_id,
@@ -364,7 +649,7 @@ const processProviderWebhook = async ({
     logClient.release();
   }
 
-  // --- Phase 2 : réconciliation (verrou journal + portefeuille + mouvement) ---
+  // --- Phase 2 : réconciliation (verrou journal + demande de recharge + portefeuille + mouvement) ---
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -379,6 +664,56 @@ const processProviderWebhook = async ({
       return { duplicate: true, provider_transaction: lock.rows[0] };
     }
 
+    const reject = async (providerTxStatus, reason) => {
+      await client.query(`UPDATE provider_transactions SET status = $1 WHERE id = $2`, [providerTxStatus, providerRowId]);
+      await client.query('COMMIT');
+      return { duplicate: false, rejected: true, reason };
+    };
+
+    // --- Vérification de la demande de recharge attendue AVANT tout crédit ---
+    // On ne crédite jamais "au mieux" : sans demande correspondante vérifiée,
+    // on ne connaît ni le montant, ni la devise, ni l'utilisateur réellement
+    // attendus — le webhook est alors indiscernable d'une tentative de fraude.
+    let topupRequest = null;
+    if (!internalReference) {
+      return await reject('ignored', 'REFERENCE_MISSING');
+    }
+
+    const topupRes = await client.query(
+      `SELECT * FROM wallet_topup_requests WHERE reference = $1 FOR UPDATE`,
+      [internalReference]
+    );
+    topupRequest = topupRes.rows[0] || null;
+
+    if (!topupRequest) {
+      return await reject('ignored', 'REFERENCE_NOT_FOUND');
+    }
+    if (topupRequest.status === 'completed') {
+      // Déjà réconciliée par un webhook antérieur (provider_tx_id différent
+      // pour le même paiement, ex. retry provider) : idempotent, pas de second crédit.
+      return await reject('processed', 'TOPUP_ALREADY_COMPLETED');
+    }
+    if (topupRequest.status !== 'pending') {
+      // 'failed' ou 'cancelled' : demande définitivement close, on ne la ranime pas.
+      return await reject('ignored', `TOPUP_ALREADY_${topupRequest.status.toUpperCase()}`);
+    }
+    if (topupRequest.user_id !== userId) {
+      return await reject('ignored', 'USER_MISMATCH');
+    }
+    if (Number(topupRequest.amount) !== Number(amount)) {
+      return await reject('ignored', 'AMOUNT_MISMATCH');
+    }
+    if (topupRequest.currency !== currency) {
+      return await reject('ignored', 'CURRENCY_MISMATCH');
+    }
+    if (paymentStatus !== PAYMENT_STATUS_SUCCESS) {
+      await client.query(
+        `UPDATE wallet_topup_requests SET status = 'failed', updated_at = now() WHERE id = $1`,
+        [topupRequest.id]
+      );
+      return await reject('failed', 'PAYMENT_FAILED');
+    }
+
     const wallet = await lockOrCreateWalletTx(client, userId);
     const result = await applyMovementTx(client, wallet, {
       type: direction,
@@ -390,7 +725,7 @@ const processProviderWebhook = async ({
       provider,
       provider_tx_id,
       description,
-      metadata: { provider, provider_tx_id },
+      metadata: { provider, provider_tx_id, internal_reference: internalReference },
       // Un mouvement provider reflète un paiement déjà acté côté provider :
       // on n'oppose pas la vérif de solde applicative à un débit provider.
       allowNegative: direction === 'debit',
@@ -398,9 +733,16 @@ const processProviderWebhook = async ({
 
     await client.query(
       `UPDATE provider_transactions
-       SET wallet_transaction_id = $1, status = 'processed'
-       WHERE id = $2`,
-      [result.transaction.id, providerRowId]
+       SET wallet_transaction_id = $1, status = 'processed', wallet_topup_request_id = $2
+       WHERE id = $3`,
+      [result.transaction.id, topupRequest.id, providerRowId]
+    );
+
+    await client.query(
+      `UPDATE wallet_topup_requests
+       SET status = 'completed', wallet_id = $1, wallet_transaction_id = $2, updated_at = now()
+       WHERE id = $3`,
+      [wallet.id, result.transaction.id, topupRequest.id]
     );
 
     await client.query('COMMIT');
@@ -428,19 +770,110 @@ const processProviderWebhook = async ({
 // =========================================================================
 
 /**
- * Initie un rechargement via un provider. Le crédit réel n'a lieu qu'à la
- * confirmation asynchrone du provider (webhook). On renvoie ici l'URL de
- * paiement à ouvrir côté client.
+ * Génère une référence interne de recharge — l'ancre stable transmise au
+ * provider (donnée personnalisée / metadata) et que son webhook devra nous
+ * renvoyer pour qu'on retrouve CETTE demande précise.
+ */
+const generateTopupReference = () => `WLT-${crypto.randomUUID()}`;
+
+/**
+ * Crée une demande de recharge en attente ("pending"), AVANT tout appel au
+ * provider. C'est cette ligne — pas le webhook — qui définit ce qui est
+ * réellement attendu (montant, devise, utilisateur) : le webhook ne pourra
+ * créditer que s'il correspond exactement à une demande pending existante
+ * (cf. processProviderWebhook).
  *
  * @param {string} userId
- * @param {object} data - { amount, provider }
+ * @param {{amount: number, currency?: string, provider: string}} data
+ * @returns {Promise<object>} la ligne wallet_topup_requests créée
+ */
+const createTopupRequest = async (userId, { amount, currency = 'XOF', provider }) => {
+  const { rows } = await query(
+    `INSERT INTO wallet_topup_requests (user_id, reference, provider, amount, currency, status)
+     VALUES ($1, $2, $3, $4, $5, 'pending')
+     RETURNING *`,
+    [userId, generateTopupReference(), provider, amount, currency]
+  );
+  return rows[0];
+};
+
+/**
+ * Initie un rechargement via un provider. Le crédit réel n'a lieu qu'à la
+ * confirmation asynchrone du provider (webhook), et seulement si elle
+ * correspond à la demande créée ici (référence, montant, devise, utilisateur).
+ * On renvoie ici l'URL de paiement à ouvrir côté client.
+ *
+ * @param {string} userId
+ * @param {object} data - { amount, provider, currency? }
  * @returns {Promise<object>} infos de paiement (URL de redirection, référence)
  */
-const initiateTopup = async (userId, { amount, provider }) => {
-  const payment = await initiateProviderPayment({ provider, amount, userId });
-  // NB: on ne crée PAS de wallet_transaction 'pending' ici pour éviter tout
-  // double comptage. La source de vérité du crédit est le webhook provider.
-  return payment;
+const initiateTopup = async (userId, { amount, provider, currency = 'XOF' }) => {
+  const topupRequest = await createTopupRequest(userId, { amount, currency, provider });
+
+  // topupRequest.reference est transmise au provider (transaction_id pour
+  // CinetPay) — c'est ce lien qui permet de vérifier montant/devise/
+  // utilisateur avant tout crédit (cf. reconcileCinetpayNotification).
+  let payment;
+  try {
+    payment = await initiateProviderPayment({
+      provider, amount, currency, userId, reference: topupRequest.reference,
+    });
+  } catch (error) {
+    // Étape 5 : ne jamais laisser une demande 'pending' sans pouvoir
+    // comprendre qu'aucune transaction provider n'a été créée. provider_tx_id
+    // reste NULL : un admin distingue ainsi cet échec d'initiation d'un
+    // paiement réellement décliné par le provider (qui, lui, aurait un
+    // provider_tx_id renseigné).
+    await query(
+      `UPDATE wallet_topup_requests SET status = 'failed', updated_at = now() WHERE id = $1`,
+      [topupRequest.id]
+    );
+    throw error;
+  }
+
+  if (payment.provider_tx_id && !payment.stub) {
+    await query(
+      `UPDATE wallet_topup_requests SET provider_tx_id = $1, updated_at = now() WHERE id = $2`,
+      [payment.provider_tx_id, topupRequest.id]
+    );
+  }
+
+  return { ...payment, reference: topupRequest.reference, topup_request_id: topupRequest.id };
+};
+
+/**
+ * Liste les demandes de recharge, tous utilisateurs confondus (admin,
+ * observabilité — diagnostiquer pending/completed/failed/cancelled).
+ * @param {{page?:number, limit?:number, status?:string}} options
+ */
+const adminListTopupRequests = async (options = {}) => {
+  const page = parseInt(options.page, 10) || 1;
+  const limit = parseInt(options.limit, 10) || 20;
+  const offset = (page - 1) * limit;
+
+  const params = [];
+  let where = '1=1';
+  if (options.status) {
+    params.push(options.status);
+    where += ` AND r.status = $${params.length}`;
+  }
+
+  const countResult = await query(`SELECT count(*)::int AS total FROM wallet_topup_requests r WHERE ${where}`, params);
+
+  const dataResult = await query(
+    `SELECT r.*, u.email AS user_email
+     FROM wallet_topup_requests r
+     JOIN users u ON u.id = r.user_id
+     WHERE ${where}
+     ORDER BY r.created_at DESC
+     LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+    [...params, limit, offset]
+  );
+
+  return {
+    topups: dataResult.rows,
+    pagination: { page, limit, total: countResult.rows[0].total, total_pages: Math.ceil(countResult.rows[0].total / limit) },
+  };
 };
 
 // =========================================================================
@@ -644,8 +1077,15 @@ const verifyWebhookSignature = (provider, rawBody, signature) => {
  * @param {object} p - { provider, amount, currency, userId, metadata }
  * @returns {Promise<{provider, provider_tx_id, amount, currency, payment_url, stub}>}
  */
-const initiateProviderPayment = async ({ provider, amount, currency = 'XOF' }) => {
-  // TODO(provider): appeler l'API réelle et renvoyer l'URL de redirection + id réel.
+const initiateProviderPayment = async ({ provider, amount, currency = 'XOF', reference }) => {
+  if (provider === 'cinetpay') {
+    // Intégration réelle (cf. section CinetPay en tête de fichier) — pas un stub.
+    const result = await initiateCinetpayPayment({ reference, amount, currency });
+    return { provider, ...result, currency, stub: false };
+  }
+
+  // FedaPay : toujours un STUB, hors périmètre de cette phase.
+  // TODO(fedapay): appeler l'API réelle et renvoyer l'URL de redirection + id réel.
   const fakeRef = `STUB-${provider}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   return {
     provider,
@@ -659,12 +1099,16 @@ const initiateProviderPayment = async ({ provider, amount, currency = 'XOF' }) =
 
 module.exports = {
   SUPPORTED_PROVIDERS,
+  PAYMENT_STATUS_SUCCESS,
   // mouvements
   creditWallet,
   debitWallet,
   reverseTransaction,
   processProviderWebhook,
+  // recharges (topup)
+  createTopupRequest,
   initiateTopup,
+  adminListTopupRequests,
   // consultation
   getWalletSummary,
   listTransactions,
@@ -676,4 +1120,9 @@ module.exports = {
   // stubs providers
   verifyWebhookSignature,
   initiateProviderPayment,
+  // CinetPay (intégration réelle)
+  verifyCinetpayXToken,
+  computeCinetpayXToken,
+  reconcileCinetpayNotification,
+  verifyCinetpayTransaction,
 };

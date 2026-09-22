@@ -8,6 +8,7 @@
 const { Router } = require('express');
 const controller = require('./wallet.controller');
 const { authenticate } = require('../auth/auth.middleware');
+const requireAdmin = require('../../middlewares/admin.middleware');
 const { requireActiveSubscription } = require('../../middlewares/subscription.middleware');
 const {
   listTransactionsValidator,
@@ -18,6 +19,7 @@ const {
   createCategoryValidator,
   updateCategoryValidator,
   idParamValidator,
+  adminListTopupsValidator,
 } = require('./wallet.validator');
 
 const router = Router();
@@ -39,11 +41,21 @@ const router = Router();
  *   post:
  *     summary: Callback d'un provider de paiement (CinetPay/FedaPay)
  *     description: >
- *       Endpoint public appelé par le provider. Aucune authentification JWT :
- *       la requête est vérifiée par signature HMAC. Traitement idempotent
- *       (contrainte UNIQUE provider + provider_tx_id). Répond TOUJOURS 200,
- *       même en cas d'erreur interne, pour éviter les retries en boucle
- *       (les erreurs sont journalisées côté serveur).
+ *       Endpoint public appelé par le provider. Aucune authentification JWT.
+ *       Traitement idempotent (contrainte UNIQUE provider + provider_tx_id).
+ *       Répond TOUJOURS 200, même en cas d'erreur interne, pour éviter les
+ *       retries en boucle (les erreurs sont journalisées côté serveur).
+ *
+ *       **cinetpay** (intégration réelle) : la notification transmet
+ *       `cpm_trans_id` (= la référence SHALOM) et un header `x-token`
+ *       (HMAC-SHA256 sur les champs cpm_* documentés par CinetPay). Le
+ *       statut réel n'est JAMAIS déduit de cette notification : SHALOM
+ *       interroge systématiquement l'API de vérification CinetPay avant tout
+ *       crédit (la notification elle-même ne contient pas de statut fiable,
+ *       par choix de sécurité de CinetPay).
+ *
+ *       **fedapay** : reste un chemin générique STUB (signature HMAC
+ *       `x-provider-signature` sur le corps brut) — non intégré.
  *     tags: [Wallet]
  *     security: []
  *     parameters:
@@ -52,9 +64,13 @@ const router = Router();
  *         required: true
  *         schema: { type: string, enum: [cinetpay, fedapay] }
  *       - in: header
+ *         name: x-token
+ *         schema: { type: string }
+ *         description: "cinetpay uniquement : HMAC-SHA256 des champs cpm_* (clé = CINETPAY_SECRET_KEY)"
+ *       - in: header
  *         name: x-provider-signature
  *         schema: { type: string }
- *         description: Signature HMAC du corps brut (nom du header à adapter au provider)
+ *         description: "fedapay uniquement (STUB) : signature HMAC du corps brut"
  *     requestBody:
  *       required: true
  *       content:
@@ -71,6 +87,33 @@ router.post('/webhook/:provider', controller.handleWebhook);
 //  À partir d'ici : authentification requise
 // =========================================================================
 router.use(authenticate);
+
+/**
+ * @swagger
+ * /api/v1/wallet/admin/topups:
+ *   get:
+ *     summary: "[Admin] Lister les demandes de recharge, tous utilisateurs confondus (diagnostic pending/completed/failed/cancelled)"
+ *     tags: [Wallet]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [pending, completed, failed, cancelled] }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20 }
+ *     responses:
+ *       200: { description: Liste paginée des demandes de recharge }
+ *       403: { description: Accès réservé aux administrateurs }
+ */
+// Déclarée AVANT requireActiveSubscription (comme les routes admin de
+// shalom-tv.routes.js) : un admin diagnostiquant des paiements n'a pas à
+// avoir lui-même un abonnement actif.
+router.get('/admin/topups', requireAdmin, adminListTopupsValidator, controller.adminListTopups);
+
 router.use(requireActiveSubscription);
 
 /**

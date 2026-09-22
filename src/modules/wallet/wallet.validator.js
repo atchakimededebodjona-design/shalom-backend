@@ -69,6 +69,14 @@ const updateCategoryValidator = [
     .withMessage('La couleur ne peut pas dépasser 20 caractères'),
 ];
 
+// --- Admin — observabilité des recharges ---
+const TOPUP_STATUSES = ['pending', 'completed', 'failed', 'cancelled'];
+const adminListTopupsValidator = [
+  query('page').optional().isInt({ min: 1 }),
+  query('limit').optional().isInt({ min: 1, max: 100 }),
+  query('status').optional().isIn(TOPUP_STATUSES).withMessage(`Le statut doit être : ${TOPUP_STATUSES.join(', ')}`),
+];
+
 // NB: pas de validateur pour le webhook. La route /webhook/:provider doit
 // TOUJOURS répondre 200 (cf. wallet.controller.handleWebhook) ; une validation
 // renvoyant 400 casserait ce contrat et provoquerait des retries en boucle.
@@ -84,6 +92,7 @@ module.exports = {
   CATEGORY_TYPES,
   SOURCES,
   PROVIDERS,
+  TOPUP_STATUSES,
   listTransactionsValidator,
   incomeValidator,
   expenseValidator,
@@ -92,4 +101,5 @@ module.exports = {
   createCategoryValidator,
   updateCategoryValidator,
   idParamValidator,
+  adminListTopupsValidator,
 };

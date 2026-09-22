@@ -19,7 +19,7 @@ const user = {
   display_name: 'Wallet Tester',
 };
 
-const WEBHOOK_TX = `${PREFIX}cinetpay-0001`;
+const WEBHOOK_TX = `${PREFIX}fedapay-0001`;
 
 let token;
 let userId;
@@ -27,13 +27,16 @@ let incomeTxId;
 
 const auth = () => ({ Authorization: `Bearer ${token}` });
 
+// Ce fichier teste le chemin GÉNÉRIQUE (encore un STUB) via fedapay — cinetpay
+// est désormais une intégration réelle (Phase 4C, cf. tests/wallet-cinetpay.test.js),
+// qui appellerait réellement l'API CinetPay et n'a donc plus sa place ici.
 // Le webhook vérifie une signature HMAC sur le corps BRUT : on doit donc
 // signer exactement la chaîne JSON qu'on envoie (et pas re-sérialiser l'objet
 // côté serveur, qui pourrait différer).
-const signCinetpay = (bodyObj) => {
+const signFedapay = (bodyObj) => {
   const raw = JSON.stringify(bodyObj);
   const signature = crypto
-    .createHmac('sha256', process.env.CINETPAY_WEBHOOK_SECRET)
+    .createHmac('sha256', process.env.FEDAPAY_WEBHOOK_SECRET)
     .update(raw)
     .digest('hex');
   return { raw, signature };
@@ -136,13 +139,27 @@ describe('Module Wallet (Portefeuille)', () => {
   });
 
   describe('Webhook provider — idempotence', () => {
+    // Depuis Phase 4B, un webhook ne crédite que s'il correspond à une
+    // demande de recharge réellement initiée (wallet_topup_requests) : on
+    // passe donc par POST /topup pour obtenir une référence interne valide
+    // avant de simuler le webhook.
+    let topupReference;
+
+    beforeAll(async () => {
+      const res = await request(app).post('/api/v1/wallet/topup').set(auth()).send({ amount: 50000, provider: 'fedapay' });
+      topupReference = res.body.data.payment.reference;
+    });
+
     // Fonction (pas une constante) : userId n'est peuplé qu'après beforeAll,
     // donc évalué à chaque appel plutôt qu'au chargement du describe.
-    const payload = () => ({ user_id: userId, provider_tx_id: WEBHOOK_TX, amount: 50000, direction: 'credit', source: 'topup' });
+    const payload = () => ({
+      user_id: userId, provider_tx_id: WEBHOOK_TX, amount: 50000, direction: 'credit',
+      source: 'topup', reference: topupReference,
+    });
 
     it('rejette une requête sans signature valide (aucun crédit)', async () => {
-      const { raw } = signCinetpay(payload());
-      const res = await request(app).post('/api/v1/wallet/webhook/cinetpay')
+      const { raw } = signFedapay(payload());
+      const res = await request(app).post('/api/v1/wallet/webhook/fedapay')
         .set('Content-Type', 'application/json')
         .send(raw); // pas de header x-provider-signature
       expect(res.statusCode).toBe(200); // toujours 200 côté provider
@@ -154,8 +171,8 @@ describe('Module Wallet (Portefeuille)', () => {
     });
 
     it('crédite le portefeuille au 1er appel signé (duplicate=false)', async () => {
-      const { raw, signature } = signCinetpay(payload());
-      const res = await request(app).post('/api/v1/wallet/webhook/cinetpay')
+      const { raw, signature } = signFedapay(payload());
+      const res = await request(app).post('/api/v1/wallet/webhook/fedapay')
         .set('Content-Type', 'application/json')
         .set('x-provider-signature', signature)
         .send(raw);
@@ -165,8 +182,8 @@ describe('Module Wallet (Portefeuille)', () => {
     });
 
     it('est idempotent au 2e appel identique (duplicate=true)', async () => {
-      const { raw, signature } = signCinetpay(payload());
-      const res = await request(app).post('/api/v1/wallet/webhook/cinetpay')
+      const { raw, signature } = signFedapay(payload());
+      const res = await request(app).post('/api/v1/wallet/webhook/fedapay')
         .set('Content-Type', 'application/json')
         .set('x-provider-signature', signature)
         .send(raw);

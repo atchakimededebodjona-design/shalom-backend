@@ -14,12 +14,15 @@ const addLike = async (req, res, next) => {
     if (hasValidationErrors(req, res)) return;
 
     const userId = req.user.id;
-    
-    // Le body contient likeable_type (enum: 'post' | 'comment') et likeable_id (UUID)
-    const added = await likesService.addLike(userId, req.body);
 
-    if (!added) {
-      // Déjà liké
+    // Le body contient likeable_type (enum: 'post' | 'comment') et likeable_id (UUID)
+    const result = await likesService.addLike(userId, req.body);
+
+    if (result === 'not_found') {
+      throw new AppError('La ressource ciblée n\'existe pas', 404, 'RESOURCE_NOT_FOUND');
+    }
+
+    if (result === 'already_liked') {
       return res.status(409).json({
         success: false,
         message: 'Vous avez déjà liké ce contenu',
@@ -33,12 +36,7 @@ const addLike = async (req, res, next) => {
       data: {},
     });
   } catch (error) {
-    // Erreur de clé étrangère (si le post ou commentaire ciblé n'existe pas)
-    if (error.code === '23503') {
-      next(new AppError('La ressource ciblée n\'existe pas', 404, 'RESOURCE_NOT_FOUND'));
-    } else {
-      next(error);
-    }
+    next(error);
   }
 };
 

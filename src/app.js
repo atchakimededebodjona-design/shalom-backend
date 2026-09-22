@@ -30,6 +30,7 @@ const walletRoutes = require('./modules/wallet/wallet.routes');
 const gamesRoutes = require('./modules/games/games.routes');
 const billingRoutes = require('./modules/billing/billing.routes');
 const ambassadorRoutes = require('./modules/ambassador/ambassador.routes');
+const subscriptionsRoutes = require('./modules/subscriptions/subscriptions.routes');
 
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./config/swagger');
@@ -128,6 +129,7 @@ app.use('/api/v1/community', communityRoutes);
 app.use('/api/v1/wallet', walletRoutes);
 app.use('/api/v1/games', gamesRoutes);
 app.use('/api/v1/billing', billingRoutes);
+app.use('/api/v1/subscriptions', subscriptionsRoutes);
 const shalomTvRoutes = require('./modules/shalom-tv/shalom-tv.routes');
 const adsRoutes = require('./modules/ads/ads.routes');
 const bibleRoutes = require('./modules/bible/bible.routes');

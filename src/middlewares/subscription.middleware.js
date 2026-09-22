@@ -4,29 +4,17 @@
 // À appliquer après `authenticate` sur tous les modules protégés, sauf
 // auth/profiles/subscriptions/ambassador (voir app.js et chaque *.routes.js).
 
-const { query } = require('../config/db');
 const { AppError } = require('./error.middleware');
-
-const TRIAL_DAYS = 7;
+// Source de vérité unique pour le calcul d'accès (abonnement actif ou essai)
+// — réutilisée telle quelle par GET /api/v1/subscriptions/status, pour que
+// le statut affiché au frontend et la décision réelle du gate ne divergent
+// jamais.
+const { getSubscriptionStatus, TRIAL_DAYS } = require('../modules/subscriptions/subscriptions.service');
 
 const requireActiveSubscription = async (req, res, next) => {
   try {
-    const userId = req.user.id;
-
-    const subRes = await query(
-      `SELECT id FROM subscriptions
-       WHERE user_id = $1 AND status = 'active' AND expires_at > now()
-       LIMIT 1`,
-      [userId]
-    );
-    if (subRes.rows.length > 0) return next();
-
-    const userRes = await query('SELECT created_at FROM users WHERE id = $1', [userId]);
-    const createdAt = userRes.rows[0]?.created_at;
-    if (createdAt) {
-      const trialEndsAt = new Date(new Date(createdAt).getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
-      if (trialEndsAt > new Date()) return next();
-    }
+    const { access } = await getSubscriptionStatus(req.user.id);
+    if (access) return next();
 
     throw new AppError(
       "Votre essai gratuit de 7 jours est terminé. Abonnez-vous pour continuer à utiliser SHALOM.",

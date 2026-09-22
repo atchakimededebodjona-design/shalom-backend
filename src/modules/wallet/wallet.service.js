@@ -3,7 +3,7 @@
 //
 // Deux natures de mouvements cohabitent dans les mêmes tables :
 //   - suivi personnel : revenus/dépenses manuels catégorisés ;
-//   - transactions réelles plateforme : rechargements CinetPay/FedaPay,
+//   - transactions réelles plateforme : rechargements CinetPay/PayGate/FedaPay,
 //     abonnements CAMAJ+, achats de crédits, factures Reçu+, commissions.
 //
 // Invariants :
@@ -23,7 +23,7 @@ const PROVIDER_SECRETS = {
   fedapay: process.env.FEDAPAY_WEBHOOK_SECRET,
 };
 
-const SUPPORTED_PROVIDERS = ['cinetpay', 'fedapay'];
+const SUPPORTED_PROVIDERS = ['cinetpay', 'fedapay', 'paygate'];
 
 // Valeur générique attendue dans le webhook pour signaler un paiement réussi
 // (⚠️ STUB : le nom du champ et la valeur réels dépendent du provider — cf.
@@ -289,6 +289,347 @@ const reconcileCinetpayNotification = async (cpmTransId) => {
     paymentStatus,
     source: 'topup',
     description: 'Rechargement CinetPay',
+  });
+};
+
+// =========================================================================
+//  PayGate Global — intégration réelle (FLOOZ / T-Money, Togo)
+//
+//  Documentation utilisée : guide d'intégration officiel PayGate Global,
+//  obtenu après activation d'un compte marchand (non public — pas d'URL de
+//  documentation accessible sans compte). Endpoints, champs et codes de
+//  statut ci-dessous reproduisent ce guide.
+//
+//  Fait documenté central, DIFFÉRENT de CinetPay : le guide PayGate Global ne
+//  décrit AUCUN mécanisme de signature (HMAC ou autre) pour authentifier ses
+//  notifications webhook. La sécurité de cette intégration repose donc
+//  entièrement sur deux garanties, jamais sur la notification seule :
+//    1. l'identifier reçu doit correspondre à une wallet_topup_requests
+//       encore 'pending' (comme pour tous les providers, cf. processProviderWebhook) ;
+//    2. le statut est TOUJOURS reconfirmé auprès de PayGate (/api/v1/status)
+//       avant tout crédit — jamais déduit du webhook seul.
+//  Limitation documentée à part (cf. verifyPaygateTransaction) : /api/v1/status
+//  ne renvoie pas de montant, donc — contrairement à CinetPay — PayGate ne
+//  peut pas confirmer le montant de façon indépendante du webhook.
+// =========================================================================
+
+const PAYGATE_AUTH_TOKEN = process.env.PAYGATE_AUTH_TOKEN;
+const PAYGATE_BASE_URL = 'https://paygateglobal.com';
+const PAYGATE_PAY_URL = `${PAYGATE_BASE_URL}/api/v1/pay`;
+const PAYGATE_STATUS_URL = `${PAYGATE_BASE_URL}/api/v1/status`;
+const PAYGATE_STATUS_BY_IDENTIFIER_URL = `${PAYGATE_BASE_URL}/api/v2/status`;
+const PAYGATE_HTTP_TIMEOUT_MS = 15000;
+const PAYGATE_NETWORKS = ['FLOOZ', 'TMONEY'];
+
+// Codes de statut documentés pour la réponse d'initiation (/api/v1/pay) —
+// DIFFÉRENTS des codes de l'endpoint de vérification malgré des valeurs
+// numériques identiques (0/2/4/6) : 0 y signifie seulement "transaction
+// enregistrée", jamais "payée" (cf. initiatePaygatePayment).
+const PAYGATE_INIT_STATUS_REASON = {
+  2: 'PAYGATE_AUTH_INVALID',
+  4: 'PAYGATE_INVALID_PARAMS',
+  6: 'PAYGATE_DUPLICATE',
+};
+
+/**
+ * Appelle l'API PayGate Global avec gestion explicite des erreurs
+ * réseau/HTTP — même politique que callCinetpayApi (jamais d'exception non
+ * contrôlée, jamais de crédit "par défaut" en cas d'échec).
+ */
+const callPaygateApi = async (url, body) => {
+  let response;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), PAYGATE_HTTP_TIMEOUT_MS);
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch (networkError) {
+    throw new AppError(
+      `Impossible de contacter PayGate (${networkError.name === 'AbortError' ? 'timeout' : networkError.message})`,
+      502,
+      'PAYGATE_UNREACHABLE'
+    );
+  }
+
+  let data;
+  try {
+    data = await response.json();
+  } catch (_) {
+    throw new AppError('Réponse PayGate invalide (JSON illisible)', 502, 'PAYGATE_INVALID_RESPONSE');
+  }
+
+  if (!response.ok) {
+    throw new AppError(`PayGate a répondu ${response.status}`, 502, 'PAYGATE_HTTP_ERROR');
+  }
+  return data;
+};
+
+/**
+ * Initie un paiement PayGate : push USSD FLOOZ/TMONEY vers phoneNumber.
+ * Pas de flux "page hébergée" côté /api/v1/pay — l'utilisateur confirme
+ * directement sur son téléphone, donc payment_url reste null.
+ *
+ * `identifier` = wallet_topup_requests.reference (jamais une référence
+ * PayGate indépendante) : c'est ce qui permettra de retrouver la demande à
+ * la notification ou lors d'une réconciliation par identifier.
+ *
+ * @param {{reference:string, amount:number, phoneNumber:string, network:string}} p
+ * @returns {Promise<{provider_tx_id:string, payment_url:null}>}
+ */
+const initiatePaygatePayment = async ({ reference, amount, phoneNumber, network }) => {
+  if (!PAYGATE_AUTH_TOKEN) {
+    throw new AppError('Intégration PayGate non configurée (PAYGATE_AUTH_TOKEN manquant)', 500, 'PAYGATE_NOT_CONFIGURED');
+  }
+  if (!phoneNumber) {
+    throw new AppError('Numéro de téléphone requis pour un paiement PayGate', 400, 'PAYGATE_PHONE_REQUIRED');
+  }
+  if (!PAYGATE_NETWORKS.includes(network)) {
+    throw new AppError(`Réseau PayGate invalide (attendu : ${PAYGATE_NETWORKS.join(', ')})`, 400, 'PAYGATE_INVALID_NETWORK');
+  }
+
+  const data = await callPaygateApi(PAYGATE_PAY_URL, {
+    auth_token: PAYGATE_AUTH_TOKEN,
+    phone_number: phoneNumber,
+    amount,
+    description: 'Rechargement portefeuille SHALOM',
+    identifier: reference,
+    network,
+  });
+
+  const initStatus = Number(data?.status);
+  if (initStatus !== 0) {
+    const code = PAYGATE_INIT_STATUS_REASON[initStatus] || `PAYGATE_INIT_STATUS_${Number.isNaN(initStatus) ? 'UNKNOWN' : initStatus}`;
+    throw new AppError(`PayGate a refusé l'initiation (${code})`, 502, code);
+  }
+  if (!data?.tx_reference) {
+    throw new AppError("PayGate n'a pas renvoyé de tx_reference (réponse incomplète)", 502, 'PAYGATE_INVALID_RESPONSE');
+  }
+
+  return {
+    provider_tx_id: String(data.tx_reference),
+    payment_url: null,
+  };
+};
+
+/**
+ * Interroge l'API de vérification PayGate par tx_reference (référence
+ * PayGate elle-même) — /api/v1/status.
+ *
+ * ⚠️ LIMITATION DOCUMENTÉE : cette réponse ne contient PAS de montant
+ * (contrairement à CinetPay). PayGate ne peut donc pas confirmer le montant
+ * de façon indépendante du webhook — cf. reconcilePaygateNotification.
+ *
+ * @param {string} txReference
+ * @returns {Promise<{status:number, identifier:string, tx_reference:string, payment_reference:string, datetime:string, payment_method:string, raw:object}>}
+ */
+const verifyPaygateTransaction = async (txReference) => {
+  if (!PAYGATE_AUTH_TOKEN) {
+    throw new AppError('Intégration PayGate non configurée (PAYGATE_AUTH_TOKEN manquant)', 500, 'PAYGATE_NOT_CONFIGURED');
+  }
+  const data = await callPaygateApi(PAYGATE_STATUS_URL, {
+    auth_token: PAYGATE_AUTH_TOKEN,
+    tx_reference: txReference,
+  });
+  if (data?.status === undefined || data?.status === null) {
+    throw new AppError('Réponse de vérification PayGate incomplète (statut absent)', 502, 'PAYGATE_INVALID_RESPONSE');
+  }
+  return {
+    status: Number(data.status),
+    identifier: data.identifier,
+    tx_reference: data.tx_reference,
+    payment_reference: data.payment_reference,
+    datetime: data.datetime,
+    payment_method: data.payment_method,
+    raw: data,
+  };
+};
+
+/**
+ * Interroge l'API de vérification PayGate par identifier (référence
+ * marchande = wallet_topup_requests.reference) — /api/v2/status. Utilisée
+ * pour la réconciliation quand un tx_reference n'est pas disponible
+ * (webhook jamais reçu) — cf. reconcilePaygateTopup.
+ *
+ * @param {string} identifier
+ * @returns {Promise<{status:number, identifier:string, tx_reference:string, payment_reference:string, datetime:string, payment_method:string, raw:object}>}
+ */
+const verifyPaygateByIdentifier = async (identifier) => {
+  if (!PAYGATE_AUTH_TOKEN) {
+    throw new AppError('Intégration PayGate non configurée (PAYGATE_AUTH_TOKEN manquant)', 500, 'PAYGATE_NOT_CONFIGURED');
+  }
+  const data = await callPaygateApi(PAYGATE_STATUS_BY_IDENTIFIER_URL, {
+    auth_token: PAYGATE_AUTH_TOKEN,
+    identifier,
+  });
+  if (data?.status === undefined || data?.status === null) {
+    throw new AppError('Réponse de vérification PayGate incomplète (statut absent)', 502, 'PAYGATE_INVALID_RESPONSE');
+  }
+  return {
+    status: Number(data.status),
+    identifier: data.identifier,
+    tx_reference: data.tx_reference,
+    payment_reference: data.payment_reference,
+    datetime: data.datetime,
+    payment_method: data.payment_method,
+    raw: data,
+  };
+};
+
+// Statuts PayGate documentés (endpoint de vérification) → statut de paiement
+// générique déjà utilisé par processProviderWebhook. 2 (en cours) n'est ni un
+// succès ni un échec définitif : on n'agit pas encore. 4 (expiré) et 6
+// (annulé) sont tous deux mappés vers 'failed' — même choix que
+// CINETPAY_STATUS_MAP (REFUSED/EXPIRED/UNKNOWN → 'failed') : processProviderWebhook
+// ne connaît de toute façon qu'un seul statut terminal non-succès ('failed'),
+// jamais 'cancelled' (cf. son code, non modifié ici). Documenté comme
+// limitation : SHALOM ne distingue pas aujourd'hui "expiré" d'"annulé" dans
+// le résultat d'une recharge, quel que soit le provider.
+const PAYGATE_STATUS_MAP = {
+  0: PAYMENT_STATUS_SUCCESS,
+  2: 'pending',
+  4: 'failed',
+  6: 'failed',
+};
+
+/**
+ * Réconcilie une notification webhook PayGate reçue sur /webhook/paygate.
+ * Suit exactement les 6 étapes de sécurité requises (jamais de confiance
+ * dans le webhook seul) :
+ *   1. retrouver wallet_topup_requests par reference = identifier ;
+ *   2. vérifier webhook.identifier === topup.reference (redondant par
+ *      construction avec l'étape 1, vérifié explicitement quand même) ;
+ *   3. vérifier webhook.amount === topup.amount (⚠️ seule vérification de
+ *      montant possible, cf. verifyPaygateTransaction — LIMITATION) ;
+ *   4. interroger PayGate (/api/v1/status) avec tx_reference ;
+ *   5. n'accepter que status === 0 ;
+ *   6. vérifier que l'identifier renvoyé par PayGate === topup.reference.
+ *
+ * @param {{tx_reference:string, identifier:string, amount:number}} p
+ * @returns {Promise<{duplicate:boolean, rejected?:boolean, reason?:string, transaction?:object, balance?:string}>}
+ */
+const reconcilePaygateNotification = async ({ tx_reference: txReference, identifier, amount }) => {
+  // Étape 1
+  const topupRes = await query('SELECT * FROM wallet_topup_requests WHERE reference = $1', [identifier]);
+  const topupRequest = topupRes.rows[0];
+  if (!topupRequest) {
+    return { duplicate: false, rejected: true, reason: 'REFERENCE_NOT_FOUND' };
+  }
+
+  // Idempotence locale AVANT tout appel réseau (même principe que CinetPay).
+  if (topupRequest.status !== 'pending') {
+    return {
+      duplicate: topupRequest.status === 'completed',
+      rejected: topupRequest.status !== 'completed',
+      reason: topupRequest.status === 'completed' ? undefined : `TOPUP_ALREADY_${topupRequest.status.toUpperCase()}`,
+    };
+  }
+
+  // Étape 2
+  if (identifier !== topupRequest.reference) {
+    return { duplicate: false, rejected: true, reason: 'IDENTIFIER_MISMATCH' };
+  }
+
+  // Étape 3 — LIMITATION DOCUMENTÉE : seule comparaison de montant possible
+  // (aucune confirmation indépendante du montant par PayGate). Redoublée par
+  // processProviderWebhook, qui refait cette même comparaison plus bas.
+  if (Number(topupRequest.amount) !== Number(amount)) {
+    return { duplicate: false, rejected: true, reason: 'AMOUNT_MISMATCH' };
+  }
+
+  // Étape 4
+  const verification = await verifyPaygateTransaction(txReference);
+
+  // Étape 6
+  if (verification.identifier !== topupRequest.reference) {
+    return { duplicate: false, rejected: true, reason: 'PAYGATE_IDENTIFIER_MISMATCH' };
+  }
+
+  // Étape 5 (via le mapping, qui n'accepte que status===0 comme succès)
+  const paymentStatus = PAYGATE_STATUS_MAP[verification.status] ?? 'failed';
+  if (paymentStatus === 'pending') {
+    // status=2 : ni succès ni échec définitif, on ne touche à rien.
+    return { duplicate: false, rejected: true, reason: `PAYGATE_STATUS_${verification.status}` };
+  }
+
+  return processProviderWebhook({
+    provider: 'paygate',
+    provider_tx_id: txReference,
+    raw_payload: verification.raw,
+    userId: topupRequest.user_id,
+    amount, // = webhook.amount, déjà vérifié à l'étape 3 (limitation documentée ci-dessus)
+    currency: topupRequest.currency, // PayGate ne renvoie pas de devise (FCFA implicite) : pas de vérification indépendante possible
+    direction: 'credit',
+    internalReference: identifier,
+    paymentStatus,
+    source: 'topup',
+    description: 'Rechargement PayGate',
+  });
+};
+
+/**
+ * Réconciliation "pull" (webhook perdu, timeout, serveur indisponible au
+ * moment de la notification...) : interroge PayGate par identifier plutôt
+ * que d'attendre un webhook qui ne reviendra peut-être jamais. Réutilise les
+ * mêmes garanties que reconcilePaygateNotification (idempotence, contrôle
+ * d'identifiant) — pas de second crédit possible même si la vraie
+ * notification arrive ensuite (provider_transactions reste unique sur
+ * provider+provider_tx_id, wallet_topup_requests passe à 'completed' ici).
+ *
+ * ⚠️ LIMITATION : /api/v2/status ne renvoie pas non plus de montant. Ici,
+ * contrairement au webhook, aucune valeur de montant indépendante n'est
+ * disponible du tout : on crédite le montant ATTENDU (wallet_topup_requests.amount),
+ * seul montant connu avec certitude dans ce chemin — pas une confirmation
+ * indépendante du montant réellement payé.
+ *
+ * @param {string} reference - wallet_topup_requests.reference
+ */
+const reconcilePaygateTopup = async (reference) => {
+  const topupRes = await query('SELECT * FROM wallet_topup_requests WHERE reference = $1', [reference]);
+  const topupRequest = topupRes.rows[0];
+  if (!topupRequest) {
+    return { duplicate: false, rejected: true, reason: 'REFERENCE_NOT_FOUND' };
+  }
+  if (topupRequest.status !== 'pending') {
+    return {
+      duplicate: topupRequest.status === 'completed',
+      rejected: topupRequest.status !== 'completed',
+      reason: topupRequest.status === 'completed' ? undefined : `TOPUP_ALREADY_${topupRequest.status.toUpperCase()}`,
+    };
+  }
+
+  const verification = await verifyPaygateByIdentifier(reference);
+  if (verification.identifier !== topupRequest.reference) {
+    return { duplicate: false, rejected: true, reason: 'PAYGATE_IDENTIFIER_MISMATCH' };
+  }
+  if (!verification.tx_reference) {
+    return { duplicate: false, rejected: true, reason: 'PAYGATE_TX_REFERENCE_MISSING' };
+  }
+
+  const paymentStatus = PAYGATE_STATUS_MAP[verification.status] ?? 'failed';
+  if (paymentStatus === 'pending') {
+    return { duplicate: false, rejected: true, reason: `PAYGATE_STATUS_${verification.status}` };
+  }
+
+  return processProviderWebhook({
+    provider: 'paygate',
+    provider_tx_id: verification.tx_reference,
+    raw_payload: verification.raw,
+    userId: topupRequest.user_id,
+    amount: topupRequest.amount, // limitation ci-dessus : montant attendu, non confirmé indépendamment
+    currency: topupRequest.currency,
+    direction: 'credit',
+    internalReference: reference,
+    paymentStatus,
+    source: 'topup',
+    description: 'Rechargement PayGate (réconciliation)',
   });
 };
 
@@ -804,19 +1145,22 @@ const createTopupRequest = async (userId, { amount, currency = 'XOF', provider }
  * On renvoie ici l'URL de paiement à ouvrir côté client.
  *
  * @param {string} userId
- * @param {object} data - { amount, provider, currency? }
+ * @param {object} data - { amount, provider, currency?, phoneNumber?, network? }
+ *   phoneNumber/network : requis uniquement pour provider='paygate' (push
+ *   USSD vers ce numéro) — sans équivalent pour cinetpay/fedapay (redirection).
  * @returns {Promise<object>} infos de paiement (URL de redirection, référence)
  */
-const initiateTopup = async (userId, { amount, provider, currency = 'XOF' }) => {
+const initiateTopup = async (userId, { amount, provider, currency = 'XOF', phoneNumber, network }) => {
   const topupRequest = await createTopupRequest(userId, { amount, currency, provider });
 
   // topupRequest.reference est transmise au provider (transaction_id pour
-  // CinetPay) — c'est ce lien qui permet de vérifier montant/devise/
-  // utilisateur avant tout crédit (cf. reconcileCinetpayNotification).
+  // CinetPay, identifier pour PayGate) — c'est ce lien qui permet de
+  // vérifier montant/devise/utilisateur avant tout crédit (cf.
+  // reconcileCinetpayNotification / reconcilePaygateNotification).
   let payment;
   try {
     payment = await initiateProviderPayment({
-      provider, amount, currency, userId, reference: topupRequest.reference,
+      provider, amount, currency, userId, reference: topupRequest.reference, phoneNumber, network,
     });
   } catch (error) {
     // Étape 5 : ne jamais laisser une demande 'pending' sans pouvoir
@@ -1070,17 +1414,24 @@ const verifyWebhookSignature = (provider, rawBody, signature) => {
 /**
  * Initie un paiement chez le provider (rechargement).
  *
- * ⚠️ STUB : à remplacer par l'appel réel à l'API CinetPay / FedaPay
+ * ⚠️ STUB pour FedaPay uniquement : à remplacer par l'appel réel à son API
  * (création de la transaction, retour de l'URL de paiement et de l'identifiant
- * provider_tx_id réel). La valeur renvoyée ici est FACTICE.
+ * provider_tx_id réel). La valeur renvoyée pour fedapay est FACTICE.
+ * cinetpay et paygate sont des intégrations réelles.
  *
- * @param {object} p - { provider, amount, currency, userId, metadata }
+ * @param {object} p - { provider, amount, currency, userId, reference, phoneNumber?, network? }
  * @returns {Promise<{provider, provider_tx_id, amount, currency, payment_url, stub}>}
  */
-const initiateProviderPayment = async ({ provider, amount, currency = 'XOF', reference }) => {
+const initiateProviderPayment = async ({ provider, amount, currency = 'XOF', reference, phoneNumber, network }) => {
   if (provider === 'cinetpay') {
     // Intégration réelle (cf. section CinetPay en tête de fichier) — pas un stub.
     const result = await initiateCinetpayPayment({ reference, amount, currency });
+    return { provider, ...result, currency, stub: false };
+  }
+
+  if (provider === 'paygate') {
+    // Intégration réelle (cf. section PayGate Global en tête de fichier) — pas un stub.
+    const result = await initiatePaygatePayment({ reference, amount, phoneNumber, network });
     return { provider, ...result, currency, stub: false };
   }
 
@@ -1125,4 +1476,9 @@ module.exports = {
   computeCinetpayXToken,
   reconcileCinetpayNotification,
   verifyCinetpayTransaction,
+  // PayGate Global (intégration réelle)
+  reconcilePaygateNotification,
+  reconcilePaygateTopup,
+  verifyPaygateTransaction,
+  verifyPaygateByIdentifier,
 };

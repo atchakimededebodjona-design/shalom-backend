@@ -39,7 +39,7 @@ const router = Router();
  * @swagger
  * /api/v1/wallet/webhook/{provider}:
  *   post:
- *     summary: Callback d'un provider de paiement (CinetPay/FedaPay)
+ *     summary: Callback d'un provider de paiement (CinetPay/PayGate/FedaPay)
  *     description: >
  *       Endpoint public appelé par le provider. Aucune authentification JWT.
  *       Traitement idempotent (contrainte UNIQUE provider + provider_tx_id).
@@ -54,6 +54,18 @@ const router = Router();
  *       crédit (la notification elle-même ne contient pas de statut fiable,
  *       par choix de sécurité de CinetPay).
  *
+ *       **paygate** (intégration réelle) : la notification transmet
+ *       `tx_reference`, `identifier` (= la référence SHALOM), `amount`,
+ *       `datetime`, `payment_method`, `phone_number`. Le guide d'intégration
+ *       PayGate Global ne documente AUCUNE signature de webhook — SHALOM ne
+ *       fait donc JAMAIS confiance à cette notification seule : le statut est
+ *       systématiquement reconfirmé auprès de PayGate (`/api/v1/status`) via
+ *       `tx_reference` avant tout crédit, avec vérification croisée de
+ *       `identifier` et du montant (limitation documentée : PayGate ne
+ *       renvoie pas de montant à la vérification, donc le montant du webhook
+ *       est comparé au montant attendu par SHALOM, pas confirmé par PayGate
+ *       lui-même).
+ *
  *       **fedapay** : reste un chemin générique STUB (signature HMAC
  *       `x-provider-signature` sur le corps brut) — non intégré.
  *     tags: [Wallet]
@@ -62,7 +74,7 @@ const router = Router();
  *       - in: path
  *         name: provider
  *         required: true
- *         schema: { type: string, enum: [cinetpay, fedapay] }
+ *         schema: { type: string, enum: [cinetpay, paygate, fedapay] }
  *       - in: header
  *         name: x-token
  *         schema: { type: string }
@@ -221,10 +233,16 @@ router.post('/expense', expenseValidator, controller.createExpense);
  * @swagger
  * /api/v1/wallet/topup:
  *   post:
- *     summary: Initier un rechargement réel via un provider (CinetPay/FedaPay)
+ *     summary: Initier un rechargement réel via un provider (CinetPay/PayGate/FedaPay)
  *     description: >
- *       Renvoie une URL de paiement. Le crédit effectif n'a lieu qu'à la
- *       confirmation asynchrone du provider (webhook). ⚠️ Provider en STUB.
+ *       Renvoie une URL de paiement (cinetpay) ou déclenche un push USSD
+ *       (paygate — payment_url reste null, l'utilisateur confirme sur son
+ *       téléphone). Le crédit effectif n'a lieu qu'à la confirmation
+ *       asynchrone du provider (webhook). ⚠️ fedapay reste en STUB.
+ *
+ *       **paygate** : `phone_number` et `network` (FLOOZ ou TMONEY) sont
+ *       requis. Le numéro est celui saisi par l'utilisateur à cet instant —
+ *       SHALOM ne conserve pas de numéro mobile money par compte.
  *     tags: [Wallet]
  *     security: [{ bearerAuth: [] }]
  *     requestBody:
@@ -236,7 +254,9 @@ router.post('/expense', expenseValidator, controller.createExpense);
  *             required: [amount, provider]
  *             properties:
  *               amount: { type: number, example: 100000 }
- *               provider: { type: string, enum: [cinetpay, fedapay] }
+ *               provider: { type: string, enum: [cinetpay, paygate, fedapay] }
+ *               phone_number: { type: string, example: '90010203', description: 'Requis pour paygate uniquement' }
+ *               network: { type: string, enum: [FLOOZ, TMONEY], description: 'Requis pour paygate uniquement' }
  *     responses:
  *       200: { description: Rechargement initié (payment_url + provider_tx_id) }
  *       400: { description: Validation }

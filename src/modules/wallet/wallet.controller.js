@@ -103,6 +103,12 @@ const initiateTopup = async (req, res, next) => {
     const payment = await walletService.initiateTopup(req.user.id, {
       amount: req.body.amount,
       provider: req.body.provider,
+      // Requis uniquement pour provider='paygate' (push USSD) — ignorés par
+      // cinetpay/fedapay. Le numéro est celui saisi par l'utilisateur à cet
+      // instant (jamais stocké/déduit d'un profil : SHALOM ne conserve pas
+      // de numéro mobile money par compte).
+      phoneNumber: req.body.phone_number,
+      network: req.body.network,
     });
     return res.status(200).json({
       success: true,
@@ -224,6 +230,33 @@ const handleCinetpayWebhook = async (req, res) => {
   return res.status(200).json({ received: true, duplicate: result.duplicate });
 };
 
+/**
+ * Traite la notification PayGate Global.
+ *
+ * Aucune signature n'est documentée pour ce provider (cf. wallet.service.js,
+ * section PayGate) : contrairement à handleCinetpayWebhook, il n'y a pas de
+ * header à vérifier ici. La seule garantie de sécurité est la vérification
+ * systématique auprès de PayGate (reconcilePaygateNotification) avant tout
+ * crédit — jamais de confiance dans ce corps de requête seul.
+ *
+ * Ne journalise jamais auth_token (jamais présent dans ce payload entrant de
+ * toute façon) ni le numéro de téléphone complet — uniquement des
+ * identifiants techniques (identifier, tx_reference) et la raison du rejet.
+ */
+const handlePaygateWebhook = async (req, res) => {
+  const { tx_reference: txReference, identifier, amount } = req.body || {};
+  if (!txReference || !identifier || amount === undefined || amount === null) {
+    console.warn('[wallet][webhook][paygate] payload incomplet (tx_reference/identifier/amount requis) — notification ignorée');
+    return res.status(200).json({ received: true });
+  }
+
+  const result = await walletService.reconcilePaygateNotification({ tx_reference: txReference, identifier, amount });
+  if (result.rejected) {
+    console.warn(`[wallet][webhook][paygate] rejeté (identifier=${identifier}) : ${result.reason}`);
+  }
+  return res.status(200).json({ received: true, duplicate: result.duplicate });
+};
+
 const handleWebhook = async (req, res) => {
   const { provider } = req.params;
   try {
@@ -234,6 +267,10 @@ const handleWebhook = async (req, res) => {
 
     if (provider === 'cinetpay') {
       return await handleCinetpayWebhook(req, res);
+    }
+
+    if (provider === 'paygate') {
+      return await handlePaygateWebhook(req, res);
     }
 
     // --- Chemin générique STUB (FedaPay, hors périmètre de cette phase) ---

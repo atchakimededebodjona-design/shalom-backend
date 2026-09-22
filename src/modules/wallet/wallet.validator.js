@@ -10,7 +10,10 @@ const SOURCES = [
   'manual', 'topup', 'withdrawal', 'subscription', 'credit_purchase',
   'invoice', 'commission', 'refund', 'reversal', 'adjustment',
 ];
-const PROVIDERS = ['cinetpay', 'fedapay'];
+const PROVIDERS = ['cinetpay', 'fedapay', 'paygate'];
+// FLOOZ / TMONEY : codes réseau documentés par le guide d'intégration
+// PayGate Global (voir wallet.service.js, section PayGate).
+const PAYGATE_NETWORKS = ['FLOOZ', 'TMONEY'];
 
 // --- Consultation ---
 const listTransactionsValidator = [
@@ -36,9 +39,18 @@ const incomeValidator = [
 const expenseValidator = incomeValidator;
 
 // --- Rechargement (topup) ---
+// phone_number/network : requis uniquement pour provider='paygate' (push
+// USSD vers ce numéro) — sans objet pour cinetpay/fedapay (redirection).
 const topupValidator = [
   body('amount').isFloat({ gt: 0 }).withMessage('Le montant doit être un nombre strictement positif'),
   body('provider').isIn(PROVIDERS).withMessage(`Le provider doit être : ${PROVIDERS.join(', ')}`),
+  body('phone_number')
+    .if(body('provider').equals('paygate'))
+    .trim().notEmpty().withMessage('Le numéro de téléphone est requis pour PayGate')
+    .isLength({ min: 6, max: 20 }).withMessage('Numéro de téléphone invalide'),
+  body('network')
+    .if(body('provider').equals('paygate'))
+    .isIn(PAYGATE_NETWORKS).withMessage(`Le réseau doit être : ${PAYGATE_NETWORKS.join(', ')}`),
 ];
 
 // --- Annulation ---

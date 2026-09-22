@@ -1,4 +1,8 @@
-const { body, query } = require('express-validator');
+const { body, param, query } = require('express-validator');
+
+const conseillerIdValidator = [
+  param('id').isUUID().withMessage('ID de conseiller invalide'),
+];
 
 const createConseillerValidator = [
   body('user_id').isUUID().withMessage('Veuillez sélectionner un membre'),
@@ -9,6 +13,7 @@ const createConseillerValidator = [
 ];
 
 const updateConseillerValidator = [
+  ...conseillerIdValidator,
   body('telephone').optional({ checkFalsy: true }).isString().trim().isLength({ max: 30 }),
   body('specialite').optional({ checkFalsy: true }).isString().trim().isLength({ max: 150 }),
   body('bio').optional({ checkFalsy: true }).isString().trim(),
@@ -21,6 +26,7 @@ const listConseillersValidator = [
 ];
 
 module.exports = {
+  conseillerIdValidator,
   createConseillerValidator,
   updateConseillerValidator,
   listConseillersValidator,

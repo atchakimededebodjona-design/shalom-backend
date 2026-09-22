@@ -31,15 +31,17 @@ router.use(requireActiveSubscription);
  *         application/json:
  *           schema:
  *             type: object
- *             required: [name, type]
+ *             required: [name]
  *             properties:
  *               name:
  *                 type: string
  *               description:
  *                 type: string
- *               type:
+ *               cover_url:
  *                 type: string
- *                 enum: [public, private, hidden]
+ *               visibility:
+ *                 type: string
+ *                 enum: [public, prive, sur_invitation]
  *     responses:
  *       201:
  *         description: Groupe créé
@@ -264,7 +266,7 @@ router.delete('/:id/members/:userId', groupMemberIdSchema, groupsController.remo
  *             properties:
  *               role:
  *                 type: string
- *                 enum: [member, admin]
+ *                 enum: [membre, moderateur, admin]
  *     responses:
  *       200:
  *         description: Rôle modifié
@@ -300,10 +302,13 @@ router.patch('/:id/members/:userId/role', updateRoleSchema, groupsController.upd
  *             properties:
  *               status:
  *                 type: string
- *                 enum: [approved, rejected, banned]
+ *                 description: "'actif' approuve la demande, 'refuse' la rejette. 'en_attente' n'est pas une transition valide (état initial posé automatiquement à l'adhésion)."
+ *                 enum: [actif, refuse]
  *     responses:
  *       200:
  *         description: Statut modifié
+ *       400:
+ *         description: Transition de statut invalide
  */
 router.patch('/:id/members/:userId/status', updateStatusSchema, groupsController.updateMemberStatus);
 

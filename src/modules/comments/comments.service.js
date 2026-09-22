@@ -3,6 +3,7 @@
 
 const { pool, query } = require('../../config/db');
 const NotificationService = require('../notifications/notifications.service');
+const { PUBLIC_PROFILE_JSON_SQL } = require('../profiles/profiles.service');
 
 
 /**
@@ -71,9 +72,9 @@ const getCommentsByPost = async (postId, limit, offset) => {
 
   // Récupérer les données
   const commentsResult = await query(
-    `SELECT 
+    `SELECT
       c.*,
-      row_to_json(pr.*) as author_profile
+      ${PUBLIC_PROFILE_JSON_SQL} as author_profile
      FROM comments c
      JOIN profiles pr ON c.author_id = pr.user_id
      WHERE c.post_id = $1 AND c.status = 'publie'

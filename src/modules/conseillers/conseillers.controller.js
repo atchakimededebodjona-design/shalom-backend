@@ -21,6 +21,7 @@ const listConseillers = async (req, res, next) => {
 
 const getConseiller = async (req, res, next) => {
   try {
+    if (hasValidationErrors(req, res)) return;
     const conseiller = await service.getConseillerById(req.params.id);
     return res.status(200).json({ success: true, data: conseiller });
   } catch (error) {
@@ -62,6 +63,7 @@ const updateConseiller = async (req, res, next) => {
 
 const deleteConseiller = async (req, res, next) => {
   try {
+    if (hasValidationErrors(req, res)) return;
     await service.deleteConseiller(req.params.id);
     return res.status(200).json({ success: true, message: 'Conseiller supprimé avec succès' });
   } catch (error) {

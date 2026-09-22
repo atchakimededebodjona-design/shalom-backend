@@ -2,6 +2,8 @@
 // Service pour la gestion des groupes
 
 const { pool, query } = require('../../config/db');
+const { AppError } = require('../../middlewares/error.middleware');
+const { PUBLIC_PROFILE_JSON_SQL } = require('../profiles/profiles.service');
 
 /**
  * Créer un nouveau groupe
@@ -279,9 +281,24 @@ const updateMemberRole = async (groupId, adminId, targetUserId, newRole) => {
 };
 
 /**
- * Approuver ou refuser un membre en attente (Admin only)
+ * Approuver ou refuser un membre en attente (Admin only).
+ *
+ * Seules 'actif' (approbation) et 'refuse' (rejet) sont des transitions
+ * valides pour cette action admin : 'en_attente' est l'état initial posé
+ * automatiquement par joinGroup, il n'existe aucune action métier consistant
+ * à y "remettre" un membre depuis ce endpoint. Le validator accepte encore
+ * 'en_attente' au niveau du body (VALID_STATUS), donc ce cas doit être
+ * explicitement rejeté ici plutôt que silencieusement ignoré.
  */
 const updateMemberStatus = async (groupId, adminId, targetUserId, newStatus) => {
+  if (newStatus !== 'actif' && newStatus !== 'refuse') {
+    throw new AppError(
+      `Transition de statut invalide : "${newStatus}" (attendu : "actif" ou "refuse")`,
+      400,
+      'INVALID_STATUS_TRANSITION'
+    );
+  }
+
   const adminCheck = await query(
     `SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2 AND role IN ('admin', 'moderateur') AND status = 'actif'`,
     [groupId, adminId]
@@ -292,30 +309,35 @@ const updateMemberStatus = async (groupId, adminId, targetUserId, newStatus) => 
   try {
     await client.query('BEGIN');
 
+    let updated;
     if (newStatus === 'refuse') {
+      // group_members n'a pas de colonne `id` (clé primaire composite
+      // group_id+user_id) : `RETURNING id` provoquait une erreur PostgreSQL
+      // 42703 (colonne inexistante) sur toute tentative de rejet, un bug
+      // pré-existant jamais détecté faute de test sur cette branche.
       const deleteRes = await client.query(
-        `DELETE FROM group_members WHERE group_id = $1 AND user_id = $2 AND status = 'en_attente' RETURNING id`,
+        `DELETE FROM group_members WHERE group_id = $1 AND user_id = $2 AND status = 'en_attente'`,
         [groupId, targetUserId]
       );
-      await client.query('COMMIT');
-      return deleteRes.rowCount > 0;
-    } else if (newStatus === 'actif') {
+      updated = deleteRes.rowCount > 0;
+    } else {
+      // newStatus === 'actif'
       const updateRes = await client.query(
         `UPDATE group_members SET status = 'actif' WHERE group_id = $1 AND user_id = $2 AND status = 'en_attente' RETURNING *`,
         [groupId, targetUserId]
       );
+      updated = updateRes.rowCount > 0;
 
-      if (updateRes.rowCount > 0) {
+      if (updated) {
         await client.query(
           `UPDATE groups SET members_count = members_count + 1 WHERE id = $1`,
           [groupId]
         );
-        await client.query('COMMIT');
-        return true;
       }
-      await client.query('ROLLBACK');
-      return false;
     }
+
+    await client.query('COMMIT');
+    return updated;
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -347,7 +369,7 @@ const getMembers = async (groupId, userId, limit, offset) => {
   const total = parseInt(countResult.rows[0].count, 10);
 
   const membersResult = await query(
-    `SELECT gm.role, gm.joined_at, row_to_json(pr.*) as profile
+    `SELECT gm.role, gm.joined_at, ${PUBLIC_PROFILE_JSON_SQL} as profile
      FROM group_members gm
      JOIN profiles pr ON gm.user_id = pr.user_id
      WHERE gm.group_id = $1 AND gm.status = 'actif'

@@ -88,6 +88,32 @@ const findPublicProfileByUserId = async (userId) => {
 };
 
 /**
+ * Fragment SQL construisant le JSON du profil PUBLIC d'un utilisateur à
+ * partir de l'alias `pr` (table `profiles` jointe dans la requête appelante).
+ * Mêmes champs, dans le même ordre de confidentialité, que
+ * findPublicProfileByUserId ci-dessus — à utiliser partout où un profil est
+ * exposé à un autre utilisateur (auteur d'un post/commentaire, membre d'un
+ * groupe, follower...), à la place de `row_to_json(pr.*)` qui renverrait
+ * aussi des colonnes internes comme `credits_balance` ou `referred_by`.
+ */
+const PUBLIC_PROFILE_JSON_SQL = `json_build_object(
+       'user_id', pr.user_id,
+       'display_name', pr.display_name,
+       'avatar_url', pr.avatar_url,
+       'cover_url', pr.cover_url,
+       'bio', pr.bio,
+       'country', pr.country,
+       'city', pr.city,
+       'church_name', pr.church_name,
+       'denomination', pr.denomination,
+       'website', pr.website,
+       'plan', pr.plan,
+       'is_ambassador', pr.is_ambassador,
+       'is_verified', pr.is_verified,
+       'created_at', pr.created_at
+     )`;
+
+/**
  * Rechercher des profils par nom d'affichage (display_name ILIKE).
  * Exclut le demandeur et les comptes supprimés. Ne renvoie que des champs publics.
  * @param {string} searchTerm - Terme recherché
@@ -181,4 +207,5 @@ module.exports = {
   findPublicProfileByUserId,
   searchProfiles,
   updateProfile,
+  PUBLIC_PROFILE_JSON_SQL,
 };

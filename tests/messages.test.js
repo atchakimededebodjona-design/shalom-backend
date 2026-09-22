@@ -91,6 +91,37 @@ describe('Module Messages', () => {
     });
   });
 
+  describe('POST /api/v1/conversations/:id/messages — limite de longueur', () => {
+    it('accepte un message exactement à la limite (5000 caractères)', async () => {
+      const res = await request(app)
+        .post(`/api/v1/conversations/${conversationId}/messages`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ content: 'a'.repeat(5000) });
+
+      expect(res.statusCode).toBe(201);
+      expect(res.body.data.message.content.length).toBe(5000);
+    });
+
+    it('refuse un message dépassant la limite (5001 caractères)', async () => {
+      const res = await request(app)
+        .post(`/api/v1/conversations/${conversationId}/messages`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ content: 'a'.repeat(5001) });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('accepte un contenu vide si un média est fourni', async () => {
+      const res = await request(app)
+        .post(`/api/v1/conversations/${conversationId}/messages`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ content: '', media_url: 'https://example.com/image.png' });
+
+      expect(res.statusCode).toBe(201);
+    });
+  });
+
   describe('PATCH /api/v1/conversations/:id/read', () => {
     it('devrait marquer les messages comme lus pour Bob', async () => {
       const res = await request(app)

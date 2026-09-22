@@ -1,6 +1,7 @@
 // src/modules/follows/follows.service.js
 const { query } = require('../../config/db');
 const NotificationService = require('../notifications/notifications.service');
+const { PUBLIC_PROFILE_JSON_SQL } = require('../profiles/profiles.service');
 
 
 /**
@@ -61,7 +62,7 @@ const getFollowers = async (userId, limit, offset) => {
   );
   
   const followersResult = await query(
-    `SELECT f.created_at as followed_at, row_to_json(pr.*) as profile
+    `SELECT f.created_at as followed_at, ${PUBLIC_PROFILE_JSON_SQL} as profile
      FROM follows f
      JOIN profiles pr ON f.follower_id = pr.user_id
      WHERE f.followed_id = $1
@@ -86,7 +87,7 @@ const getFollowing = async (userId, limit, offset) => {
   );
 
   const followingResult = await query(
-    `SELECT f.created_at as followed_at, row_to_json(pr.*) as profile
+    `SELECT f.created_at as followed_at, ${PUBLIC_PROFILE_JSON_SQL} as profile
      FROM follows f
      JOIN profiles pr ON f.followed_id = pr.user_id
      WHERE f.follower_id = $1

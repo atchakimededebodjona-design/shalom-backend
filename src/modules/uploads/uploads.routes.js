@@ -26,5 +26,6 @@ const handleUpload = (req, res, next) => {
 };
 
 router.post('/', authenticate, handleUpload, controller.uploadFile);
+router.get('/usage', authenticate, controller.getUsage);
 
 module.exports = router;

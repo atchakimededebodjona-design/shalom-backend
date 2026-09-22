@@ -2,6 +2,7 @@
 // Service pour la gestion des publications (posts)
 
 const { query } = require('../../config/db');
+const { PUBLIC_PROFILE_JSON_SQL } = require('../profiles/profiles.service');
 
 /**
  * Créer un nouveau post
@@ -63,7 +64,7 @@ const getFeed = async (userId, limit, offset, groupId = null) => {
   const postsResult = await query(
     `SELECT
       p.*,
-      row_to_json(pr.*) as author_profile,
+      ${PUBLIC_PROFILE_JSON_SQL} as author_profile,
       EXISTS (
         SELECT 1 FROM likes l
         WHERE l.likeable_type = 'post' AND l.likeable_id = p.id AND l.user_id = $1
@@ -92,7 +93,7 @@ const getPostById = async (postId, userId) => {
   const result = await query(
     `SELECT
       p.*,
-      row_to_json(pr.*) as author_profile,
+      ${PUBLIC_PROFILE_JSON_SQL} as author_profile,
       EXISTS (
         SELECT 1 FROM likes l
         WHERE l.likeable_type = 'post' AND l.likeable_id = p.id AND l.user_id = $2

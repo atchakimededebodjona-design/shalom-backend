@@ -34,13 +34,14 @@ class NotificationsService {
     );
     const total = parseInt(countResult.rows[0].count);
 
+    // Jamais l'email de l'acteur : seuls des champs publics du profil
+    // (display_name, avatar_url) sont exposés au destinataire de la
+    // notification, cf. profiles.service.js#findPublicProfileByUserId.
     const result = await pool.query(
-      `SELECT n.*, 
-              u.email as actor_email, 
-              p.display_name as actor_name, 
+      `SELECT n.*,
+              p.display_name as actor_name,
               p.avatar_url as actor_avatar
        FROM notifications n
-       LEFT JOIN users u ON n.actor_id = u.id
        LEFT JOIN profiles p ON n.actor_id = p.user_id
        WHERE n.user_id = $1
        ORDER BY n.created_at DESC

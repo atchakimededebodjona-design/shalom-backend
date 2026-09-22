@@ -7,6 +7,7 @@ const validator = require('./ads.validator');
 const { authenticate } = require('../auth/auth.middleware');
 const requireAdmin = require('../../middlewares/admin.middleware');
 const { AppError } = require('../../middlewares/error.middleware');
+const { identifier } = require('../uploads/file-signature');
 
 const router = Router();
 
@@ -46,6 +47,45 @@ const handleUpload = (req, res, next) => {
   });
 };
 
+// Ne fait pas confiance à `file.originalname`/`mimetype` (contrôlés par le
+// client) pour accepter le fichier : comme le module uploads générique et
+// shalom-tv, on relit les premiers octets déjà écrits sur disque pour
+// vérifier la signature binaire réelle, et on rejette tout ce qui n'est pas
+// une image reconnue (le champ 'image' des pubs n'accepte pas de vidéo/audio).
+// Le nom sur disque est renommé pour correspondre à l'extension réelle.
+const validateUploadedImage = (req, res, next) => {
+  const file = req.files?.image?.[0];
+  if (!file) return next();
+
+  try {
+    const fd = fs.openSync(file.path, 'r');
+    const header = Buffer.alloc(32);
+    const bytesRead = fs.readSync(fd, header, 0, 32, 0);
+    fs.closeSync(fd);
+
+    const detected = identifier(header.subarray(0, bytesRead));
+    if (!detected || !detected.mime.startsWith('image/')) {
+      fs.unlink(file.path, () => {});
+      return next(new AppError(
+        "Type d'image non supporté (PNG, JPEG, GIF, WEBP uniquement)",
+        400,
+        'UNSUPPORTED_FILE_TYPE'
+      ));
+    }
+
+    const baseName = path.basename(file.path, path.extname(file.path));
+    const newPath = path.join(path.dirname(file.path), baseName + detected.ext);
+    fs.renameSync(file.path, newPath);
+    file.path = newPath;
+    file.filename = path.basename(newPath);
+    file.mimetype = detected.mime;
+    next();
+  } catch (error) {
+    fs.unlink(file.path, () => {});
+    next(error);
+  }
+};
+
 // --- Routes Publiques (Utilisateurs connectés) ---
 router.get('/', authenticate, validator.listAdsValidator, controller.listAds);
 
@@ -56,9 +96,9 @@ router.get('/:id/reports', authenticate, requireAdmin, controller.adminGetAdRepo
 router.get('/:id', authenticate, controller.getAd);
 router.post('/:id/report', authenticate, validator.reportAdValidator, controller.reportAd);
 
-router.post('/', authenticate, requireAdmin, handleUpload, validator.createAdValidator, controller.createAd);
-router.put('/:id', authenticate, requireAdmin, handleUpload, validator.updateAdValidator, controller.updateAd);
-router.patch('/:id', authenticate, requireAdmin, handleUpload, validator.updateAdValidator, controller.updateAd);
+router.post('/', authenticate, requireAdmin, handleUpload, validateUploadedImage, validator.createAdValidator, controller.createAd);
+router.put('/:id', authenticate, requireAdmin, handleUpload, validateUploadedImage, validator.updateAdValidator, controller.updateAd);
+router.patch('/:id', authenticate, requireAdmin, handleUpload, validateUploadedImage, validator.updateAdValidator, controller.updateAd);
 router.delete('/:id', authenticate, requireAdmin, controller.deleteAd);
 
 module.exports = router;

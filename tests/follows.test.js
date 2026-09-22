@@ -58,6 +58,22 @@ describe('Module Follows', () => {
     });
   });
 
+  describe('GET /api/v1/follows/user/:userId/followers — confidentialité du profil', () => {
+    it("n'expose jamais credits_balance, referred_by ni email des followers", async () => {
+      const res = await request(app)
+        .get(`/api/v1/follows/user/${userIdB}/followers`)
+        .set('Authorization', `Bearer ${tokenB}`);
+
+      expect(res.statusCode).toBe(200);
+      expect(res.body.data.followers.length).toBeGreaterThanOrEqual(1);
+      for (const follower of res.body.data.followers) {
+        expect(follower.profile).not.toHaveProperty('credits_balance');
+        expect(follower.profile).not.toHaveProperty('referred_by');
+        expect(follower.profile).not.toHaveProperty('email');
+      }
+    });
+  });
+
   describe('DELETE /api/v1/follows/:followedId', () => {
     it('devrait se désabonner', async () => {
       const res = await request(app)

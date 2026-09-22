@@ -31,6 +31,12 @@ const env = {
   CORS_ORIGINS: process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(',').map((origin) => origin.trim())
     : ['http://localhost:3000'],
+
+  // Quota de stockage par utilisateur pour POST /api/v1/uploads (module
+  // uploads générique), en Mo. Empêche un utilisateur d'épuiser abusivement
+  // l'espace disque en enchaînant des téléversements (max 50 Mo/fichier,
+  // aucune autre limite auparavant). Défaut : 500 Mo.
+  UPLOAD_QUOTA_BYTES: (parseInt(process.env.UPLOAD_QUOTA_MB, 10) || 500) * 1024 * 1024,
 };
 
 // Vérification des variables critiques au démarrage

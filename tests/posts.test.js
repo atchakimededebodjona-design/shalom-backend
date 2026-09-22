@@ -110,6 +110,21 @@ describe('Module Posts', () => {
     });
   });
 
+  describe('Confidentialité du profil auteur', () => {
+    it("n'expose jamais credits_balance, referred_by ni email dans author_profile", async () => {
+      const res = await request(app)
+        .get(`/api/v1/posts/${postId}`)
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.statusCode).toBe(200);
+      const profile = res.body.data.post.author_profile;
+      expect(profile).not.toHaveProperty('credits_balance');
+      expect(profile).not.toHaveProperty('referred_by');
+      expect(profile).not.toHaveProperty('email');
+      expect(profile).toHaveProperty('display_name');
+    });
+  });
+
   describe('DELETE /api/v1/posts/:id', () => {
     it('devrait supprimer un post', async () => {
       const res = await request(app)

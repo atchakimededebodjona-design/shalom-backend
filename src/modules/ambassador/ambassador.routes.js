@@ -10,6 +10,7 @@
 const { Router } = require('express');
 const controller = require('./ambassador.controller');
 const { authenticate } = require('../auth/auth.middleware');
+const requireAdmin = require('../../middlewares/admin.middleware');
 const v = require('./ambassador.validator');
 
 const router = Router();
@@ -171,7 +172,7 @@ router.post('/withdrawals', v.requestWithdrawalValidator, controller.requestWith
 
 // =========================================================================
 // Routes Admin — réservées aux emails dans ADMIN_EMAILS
-// (vérification dans le contrôleur via isAdminEmail)
+// (vérification via le middleware requireAdmin, comme les autres modules admin)
 // =========================================================================
 
 /**
@@ -185,7 +186,7 @@ router.post('/withdrawals', v.requestWithdrawalValidator, controller.requestWith
  *       200: { description: Liste paginée des ambassadeurs }
  *       403: { description: Accès réservé aux admins }
  */
-router.get('/admin/list', v.adminListAmbassadorsValidator, controller.adminListAmbassadors);
+router.get('/admin/list', requireAdmin, v.adminListAmbassadorsValidator, controller.adminListAmbassadors);
 
 /**
  * @swagger
@@ -211,7 +212,7 @@ router.get('/admin/list', v.adminListAmbassadorsValidator, controller.adminListA
  *     responses:
  *       200: { description: Niveau mis à jour }
  */
-router.patch('/admin/:id/level', v.adminSetLevelValidator, controller.adminSetLevel);
+router.patch('/admin/:id/level', requireAdmin, v.adminSetLevelValidator, controller.adminSetLevel);
 
 /**
  * @swagger
@@ -237,7 +238,7 @@ router.patch('/admin/:id/level', v.adminSetLevelValidator, controller.adminSetLe
  *     responses:
  *       200: { description: Statut mis à jour }
  */
-router.patch('/admin/:id/status', v.adminSetStatusValidator, controller.adminSetStatus);
+router.patch('/admin/:id/status', requireAdmin, v.adminSetStatusValidator, controller.adminSetStatus);
 
 /**
  * @swagger
@@ -249,7 +250,7 @@ router.patch('/admin/:id/status', v.adminSetStatusValidator, controller.adminSet
  *     responses:
  *       200: { description: Liste paginée des commissions }
  */
-router.get('/admin/commissions', v.adminListCommissionsValidator, controller.adminListCommissions);
+router.get('/admin/commissions', requireAdmin, v.adminListCommissionsValidator, controller.adminListCommissions);
 
 /**
  * @swagger
@@ -268,7 +269,7 @@ router.get('/admin/commissions', v.adminListCommissionsValidator, controller.adm
  *       404: { description: Commission introuvable }
  *       409: { description: Commission déjà traitée }
  */
-router.patch('/admin/commissions/:id', v.adminApproveCommissionValidator, controller.adminApproveCommission);
+router.patch('/admin/commissions/:id', requireAdmin, v.adminApproveCommissionValidator, controller.adminApproveCommission);
 
 /**
  * @swagger
@@ -306,8 +307,8 @@ router.patch('/admin/commissions/:id', v.adminApproveCommissionValidator, contro
  *     responses:
  *       200: { description: Liste paginée des retraits, tous ambassadeurs confondus }
  */
-router.get('/admin/withdrawals', controller.adminListWithdrawals);
+router.get('/admin/withdrawals', requireAdmin, controller.adminListWithdrawals);
 
-router.patch('/admin/withdrawals/:id', v.adminProcessWithdrawalValidator, controller.adminProcessWithdrawal);
+router.patch('/admin/withdrawals/:id', requireAdmin, v.adminProcessWithdrawalValidator, controller.adminProcessWithdrawal);
 
 module.exports = router;

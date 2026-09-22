@@ -19,7 +19,11 @@ const sendMessageSchema = [
     }
     return true;
   }),
-  body('content').optional().trim(),
+  body('content')
+    .optional()
+    .trim()
+    .isLength({ max: 5000 })
+    .withMessage('Le message ne peut pas dépasser 5000 caractères'),
   body('media_url').optional().trim().isURL().withMessage('URL de média invalide')
 ];
 

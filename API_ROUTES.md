@@ -148,12 +148,17 @@ Catégories : `cellule_priere`, `etude_biblique`, `jeunesse`, `autre`.
 | Méthode | Chemin | Description |
 |---|---|---|
 | `POST` | `/api/v1/uploads/` | Téléverser une image ou une vidéo (multipart, champ `file`, max 50 Mo) |
+| `GET` | `/api/v1/uploads/usage` | Quota de stockage de l'utilisateur connecté (`used_bytes`, `quota_bytes`, `remaining_bytes`) |
 
 Le type est déterminé à partir des **octets du fichier**, jamais du nom ni du
 `Content-Type` annoncés : ceux-ci viennent du client et ne prouvent rien.
 L'extension stockée découle du type détecté. Types acceptés : PNG, JPEG, GIF,
 WEBP, MP4, MOV, WEBM. Tout le reste est refusé — SVG compris, car il peut
 exécuter du script. Les fichiers sont servis sur `/uploads/<nom>`.
+
+Chaque compte dispose d'un quota de stockage cumulé (`UPLOAD_QUOTA_MB`,
+défaut 500 Mo) : au-delà, `POST /api/v1/uploads` renvoie `413
+UPLOAD_QUOTA_EXCEEDED`.
 
 ---
 

@@ -70,6 +70,6 @@ exports.updateReport = async (req, res) => {
       return res.status(404).json({ success: false, error: err.message, code: err.code });
     }
     console.error('updateReport error:', err);
-    res.status(500).json({ success: false, error: err.message || "Erreur lors de la mise à jour du signalement", code: "INTERNAL_ERROR", detail: err.stack });
+    res.status(500).json({ success: false, error: "Erreur lors de la mise à jour du signalement", code: "INTERNAL_ERROR" });
   }
 };

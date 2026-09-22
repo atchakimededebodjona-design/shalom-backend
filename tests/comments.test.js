@@ -50,6 +50,22 @@ describe('Module Comments', () => {
     });
   });
 
+  describe('Confidentialité du profil auteur', () => {
+    it("n'expose jamais credits_balance, referred_by ni email dans author_profile", async () => {
+      const res = await request(app)
+        .get(`/api/v1/comments/post/${postId}`)
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.statusCode).toBe(200);
+      expect(res.body.data.comments.length).toBeGreaterThanOrEqual(1);
+      for (const comment of res.body.data.comments) {
+        expect(comment.author_profile).not.toHaveProperty('credits_balance');
+        expect(comment.author_profile).not.toHaveProperty('referred_by');
+        expect(comment.author_profile).not.toHaveProperty('email');
+      }
+    });
+  });
+
   describe('DELETE /api/v1/comments/:id', () => {
     it('devrait supprimer un commentaire', async () => {
       const res = await request(app)

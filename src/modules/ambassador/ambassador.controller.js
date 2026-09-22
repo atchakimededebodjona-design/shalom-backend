@@ -5,30 +5,6 @@
 
 const service = require('./ambassador.service');
 const { hasValidationErrors } = require('../../utils/validate');
-const { isAdminEmail } = require('../../utils/admin');
-
-// =========================================================================
-// Helpers
-// =========================================================================
-
-/**
- * Vérifie que l'utilisateur connecté est administrateur.
- * Lève une erreur 403 sinon.
- * @param {object} req
- * @param {object} res
- * @returns {boolean} true si accès refusé (réponse déjà envoyée)
- */
-const denyIfNotAdmin = (req, res) => {
-  if (!isAdminEmail(req.user?.email)) {
-    res.status(403).json({
-      success: false,
-      error: 'Accès réservé aux administrateurs SHALOM',
-      code: 'FORBIDDEN',
-    });
-    return true;
-  }
-  return false;
-};
 
 // =========================================================================
 // 1. Profil Ambassadeur
@@ -218,7 +194,6 @@ const listWithdrawals = async (req, res, next) => {
  */
 const adminListAmbassadors = async (req, res, next) => {
   try {
-    if (denyIfNotAdmin(req, res)) return;
     if (hasValidationErrors(req, res)) return;
     const result = await service.adminListAmbassadors(req.query);
     return res.status(200).json({ success: true, data: result });
@@ -233,7 +208,6 @@ const adminListAmbassadors = async (req, res, next) => {
  */
 const adminSetLevel = async (req, res, next) => {
   try {
-    if (denyIfNotAdmin(req, res)) return;
     if (hasValidationErrors(req, res)) return;
     const profile = await service.adminSetLevel(req.params.id, req.body.level);
     return res.status(200).json({
@@ -252,7 +226,6 @@ const adminSetLevel = async (req, res, next) => {
  */
 const adminSetStatus = async (req, res, next) => {
   try {
-    if (denyIfNotAdmin(req, res)) return;
     if (hasValidationErrors(req, res)) return;
     const profile = await service.adminSetStatus(req.params.id, req.body.status);
     return res.status(200).json({
@@ -271,7 +244,6 @@ const adminSetStatus = async (req, res, next) => {
  */
 const adminListCommissions = async (req, res, next) => {
   try {
-    if (denyIfNotAdmin(req, res)) return;
     if (hasValidationErrors(req, res)) return;
     const result = await service.adminListCommissions(req.query);
     return res.status(200).json({ success: true, data: result });
@@ -286,7 +258,6 @@ const adminListCommissions = async (req, res, next) => {
  */
 const adminApproveCommission = async (req, res, next) => {
   try {
-    if (denyIfNotAdmin(req, res)) return;
     if (hasValidationErrors(req, res)) return;
     const result = await service.approveCommission(req.params.id);
     return res.status(200).json({
@@ -305,7 +276,6 @@ const adminApproveCommission = async (req, res, next) => {
  */
 const adminListWithdrawals = async (req, res, next) => {
   try {
-    if (denyIfNotAdmin(req, res)) return;
     if (hasValidationErrors(req, res)) return;
     const result = await service.adminListWithdrawals(req.query);
     return res.status(200).json({ success: true, data: result });
@@ -320,7 +290,6 @@ const adminListWithdrawals = async (req, res, next) => {
  */
 const adminProcessWithdrawal = async (req, res, next) => {
   try {
-    if (denyIfNotAdmin(req, res)) return;
     if (hasValidationErrors(req, res)) return;
     const withdrawal = await service.adminProcessWithdrawal(req.params.id, req.body);
     return res.status(200).json({

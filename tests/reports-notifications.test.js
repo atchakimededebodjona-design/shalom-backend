@@ -62,6 +62,14 @@ describe('Module Reports & Notifications', () => {
       expect(res.body.data.notifications.length).toBe(3);
     });
 
+    it("n'expose jamais l'email de l'acteur (Bob) dans les notifications d'Alice", async () => {
+      const res = await request(app).get('/api/v1/notifications').set('Authorization', `Bearer ${tokenA}`);
+      expect(res.statusCode).toBe(200);
+      for (const notification of res.body.data.notifications) {
+        expect(notification).not.toHaveProperty('actor_email');
+      }
+    });
+
     it('devrait marquer toutes les notifications comme lues', async () => {
       await request(app).patch('/api/v1/notifications/read-all').set('Authorization', `Bearer ${tokenA}`);
       const res = await request(app).get('/api/v1/notifications/unread-count').set('Authorization', `Bearer ${tokenA}`);
